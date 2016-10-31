@@ -639,10 +639,12 @@ def main(argv):
 		pcoa_javastring, pcoa_sample_string, xmax, xmin, ymax, ymin, zmax, zmin = P3D_analyser_plotly(distance_matrix, args.design, calc, mothur_exec_path, args.processors, args.outputdir)
 		pca_javascript_plotly(pcoa_javastring, pcoa_sample_string, args.design, xmax, xmin, ymax, ymin, zmax, zmin, calc, args.name, js_path)
 	"""
-	html_maker(alpha_path, args.design, args.name, summary_table_header, summary_table_body, biomarker_discovery_string)
+	copytree(args.outputdir + '/ZAC_ANALYSIS/', '/usr/share/nginx/html/')
+	#html_maker(alpha_path, args.design, args.name, summary_table_header, summary_table_body, biomarker_discovery_string)
 	# Beautiful Shared Table
 	#shared_table_header, shared_table_body = shared_table_maker(args.shared, args.design)
 	#shutil.copytree(args.outputdir + '/ZAC_ANALYSIS/', '/usr/share/nginx/html/')
+	
 	remove_mothur_log(os.getcwd())
 
 
@@ -2903,6 +2905,15 @@ def mothur_subsample(processors, outputdir, stderr, stdout, run_pid, mothur_exec
 
 
 # ################################### UTILITY ################################## #
+def copytree(src, dst, symlinks=False, ignore=None):
+	for item in os.listdir(src):
+		s = os.path.join(src, item)
+		d = os.path.join(dst, item)
+		if os.path.isdir(s):
+			shutil.copytree(s, d, symlinks, ignore)
+		else:
+			shutil.copy2(s, d)
+	return True
 def min_abundance(shared_file, new_shared_file, minimum_abundance):
 	header = []
 	columns = {}
