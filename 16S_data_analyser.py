@@ -642,7 +642,7 @@ def main(argv):
 	#html_maker(alpha_path, args.design, args.name, summary_table_header, summary_table_body, biomarker_discovery_string)
 	# Beautiful Shared Table
 	#shared_table_header, shared_table_body = shared_table_maker(args.shared, args.design)
-	shutil.copytree(args.outputdir, '/usr/share/nginx/html')
+	shutil.copytree(args.outputdir + '/ZAC_ANALYSIS/', '/usr/share/nginx/html')
 	remove_mothur_log(os.getcwd())
 
 
