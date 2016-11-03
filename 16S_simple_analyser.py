@@ -409,6 +409,7 @@ def main(argv):
 	pca_html_string_dict = {}
 	html_plotter(alpha_path, args.name, args.design, alpha_diversity_summary_table_header, alpha_diversity_summary_table_body, pca_html_string_dict)
 	remove_mothur_log(os.getcwd())
+	make_archive(args.outputdir)
 	print "16S SIMPLE ANALYSER EXECUTION COMPLETED AT ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report("16S SIMPLE ANALYSER EXECUTION COMPLETED AT " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	#all_plotter(alpha_path, rarefaction_file_name, sample_abundance_file_name, bacterial_abundance_file_name, summary_table_header, summary_table_body, alpha_diversity_summary_file_name, biomarker_discovery_string, pca_html_string_dict, args.name, args.design)
@@ -1539,6 +1540,11 @@ def kill_pid_list(pid_list, outputdir):
 
 
 # ################################### UTILITIES_FUNCTIONS #################################### #
+
+def make_archive(target_file_path):
+	shutil.make_archive(target_file_path, 'zip', target_file_path)
+	return True
+
 
 def round_float(value):
 	if isfloat(value) is False:
