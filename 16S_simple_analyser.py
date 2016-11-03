@@ -142,7 +142,7 @@ CHECK_MARK = "OK"
 FAILED_MARK = ":("
 execdir = "/exec/"
 jslib = "/javascript/"
-outputdir = "/16S_data_analyser_output/"
+outputdir = "/16S_simple_analyser_results/"
 phylotype = "/test_data/ZAC_phylotype.txt"
 design = "/test_data/ZAC_design.txt"
 processors = multiprocessing.cpu_count()
@@ -214,7 +214,7 @@ def main(argv):
 		args.outputdir = outputdir
 		report_string += "Using Default output directory\n"
 	global report_file
-	report_file = args.outputdir + "16S_simple_plot_report.txt"
+	report_file = args.outputdir + "16S_simple_analyser_report.txt"
 	check_it_and_remove_it(report_file, True)
 	report(report_string)
 	args.jslib = jslib
