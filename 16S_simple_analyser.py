@@ -181,26 +181,60 @@ def main(argv):
 	beta.add_argument("--normalize", help="Normalizing using totalgroup method", action='store')
 
 	args = parser.parse_args()
+	# #############################BEURACRATICS PROCEDURES
+	report_string += "######################################################################################################################################\n"
+	print "######################################################################################################################################"
+	report_string += "16S SIMPLE PARSER EXECUTION HAS INITIATED" + '\n'
+	print "16S SIMPLE PARSER EXECUTION HAS INITIATED"
+	report_string += "Initiation time: " + time.strftime("%Y-%m-%d %H:%M:%S") + '\n'
+	print "Initiation time: ", time.strftime("%Y-%m-%d %H:%M:%S")
+	report_string += "###################################################################" + '\n'
+	print "###################################################################"
+	report_string += "INFORMATION ABOUT THE ENVIRONMENT, EXECUTABLES AND PROVIDED DATA" + '\n'
+	print "INFORMATION ABOUT THE ENVIRONMENT, EXECUTABLES AND PROVIDED DATA"
+	report_string += "###################################################################" + '\n'
+	print "###################################################################"
+	report_string += "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + '\n'
+	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	print "COMMAND LINE:"
+	report_string += "COMMAND LINE:\n"
+	report_string += "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + '\n'
+	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	commandline_string = 'python ' + ' '.join(sys.argv) + '\n'
+	print commandline_string
+	report_string += commandline_string + '\n'
+	report_string += "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + '\n'
+	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	report_string += "ARGUMENTS:" + '\n'
+	print "ARGUMENTS:"
+	report_string += "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + '\n'
+	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	# ########### EXECECUTIVE DIRECTORY CHECKING
-	args.outputdir = outputdir
+	if args.outputdir is None:
+		args.outputdir = outputdir
+		report_string += "Using Default output directory\n"
+	global report_file
+	report_file = args.outputdir + "16S_simple_plot_report.txt"
+	check_it_and_remove_it(report_file, True)
+	report(report_string)
 	args.jslib = jslib
 	args.execdir = execdir
-	args.outputdir = outputdir
-	args.phylotype = phylotype
-	args.design = design
+	if args.phylotype is None:
+		args.phylotype = phylotype
+		report("Using Default phylotype file")
+		print "Using Default phylotype file"
+	if args.design is None:
+		args.design = design
+		report("Using Default design file")
+		print "Using Default design file"
+
 	args.processors = str(processors)
 	args.name = name
 	args.remove_sample_file = remove_sample_file
 	args.keep_sample_file = keep_sample_file
 	args.taxlevel = taxlevel
 	args.normalize = normalize
-	global report_file
-	report_file = args.outputdir + "16S_simple_plot_report.txt"
-	check_it_and_remove_it(report_file, True)
-	report(report_string)
-
-	print "[--execdir]: The excutives directory path is: ", args.execdir
-	report("[--execdir]: the excutives directory path is: " + args.execdir)
+	
 	print "\n###################################################################"
 	report("\n###################################################################")
 	print "VERIFYING THE SANITY/VERSION OF EXECUTABLES IN EXECUTIVE DIRECTORY"
@@ -375,6 +409,8 @@ def main(argv):
 	pca_html_string_dict = {}
 	html_plotter(alpha_path, args.name, args.design, alpha_diversity_summary_table_header, alpha_diversity_summary_table_body, pca_html_string_dict)
 	remove_mothur_log(os.getcwd())
+	print "16S SIMPLE ANALYSER EXECUTION COMPLETED AT ", time.strftime("%Y-%m-%d %H:%M:%S")
+	report("16S SIMPLE ANALYSER EXECUTION COMPLETED AT " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	#all_plotter(alpha_path, rarefaction_file_name, sample_abundance_file_name, bacterial_abundance_file_name, summary_table_header, summary_table_body, alpha_diversity_summary_file_name, biomarker_discovery_string, pca_html_string_dict, args.name, args.design)
 # ################################### ALPHA DIVERSITY SUMMARY FUNCTIONS ################### #
 
