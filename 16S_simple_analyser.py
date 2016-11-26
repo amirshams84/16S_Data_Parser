@@ -16,10 +16,15 @@ import logging as log
 import subprocess
 import traceback
 import shutil
-import collections
 import math
 import decimal
-
+import collections
+import plotly
+import plotly.plotly as py
+import plotly.graph_objs as PLOTLY_GO
+from plotly.tools import FigureFactory as FF
+import numpy as np
+from scipy.spatial.distance import pdist, squareform
 
 
 # ################################### OBJECTS ################################## #
@@ -140,19 +145,22 @@ class entity:
 # ################################### GLOBALS ################################## #
 CHECK_MARK = "OK"
 FAILED_MARK = ":("
-execdir = "/exec/"
-jslib = "/javascript/"
-outputdir = "/16S_simple_analyser_results/"
+DEFAULT_OUTPUTDIR = "/16S_simple_analyser_results/"
+DEFAULT_EXECDIR = "/exec/"
+DEFAULT_JSLIB = "/javascript/"
+DEFAULT_JS = ['jquery-2.2.3.min.js', 'jquery.tablesorter.js', 'plotly-latest.min.js', 'bootstrap.min.css', 'bootstrap.min.js', 'tether.min.js', 'fontawesome.min.js', 'font-awesome.min.css']
+DEFAULT_PREFIX = "MICROBIOME_SLICER"
+DEFAULT_PROCESSORS = str(multiprocessing.cpu_count())
 #outputdir = "./"
 phylotype = "/test_data/ZAC_phylotype.txt"
 design = "/test_data/ZAC_design.txt"
-processors = multiprocessing.cpu_count()
-name = "ZAC"
+
 taxlevel = "family"
 remove_sample_file = "false"
 keep_sample_file = "false"
 normalize = "false"
 CURRENT_PATH = "./"
+NO_BETA_DIVERSITY = True
 # ###################################   MAIN   ################################# #
 
 
@@ -163,8 +171,8 @@ def main(argv):
 	# ##################### MAIN FILE PARAMETERS
 	main_file = parser.add_argument_group('Main file parameters')
 	main_file.add_argument("--phylotype", help="Phylotype file", action='store')
-	main_file.add_argument("--shared", help="Phylotype file", action='store')
-	main_file.add_argument("--biom", help="Phylotype file", action='store')
+	main_file.add_argument("--shared", help="shared file", action='store')
+	main_file.add_argument("--biom", help="biom file", action='store')
 	main_file.add_argument("--taxlevel", help="taxonomy level on of [species, genus, family]", action='store')
 	main_file.add_argument("--design", help="design file", action='store')
 	main_file.add_argument("--jslib", help="javascript library", action='store')
@@ -174,20 +182,19 @@ def main(argv):
 	# #################### GENERAL PARAMETERS
 	general = parser.add_argument_group('general parameters')
 	general.add_argument("--processors", help="number of processors assigned", action='store')
-	general.add_argument("--name", help="name of output files", action='store')
+	general.add_argument("--prefix", help="prefix name of output files", action='store')
 
 	# #################### BETA PARAMETERS
 	beta = parser.add_argument_group('beta parameters')
-	beta.add_argument("--remove_sample_file", help="list of samples to remove", action='store')
-	beta.add_argument("--keep_sample_file", help="list of samples to keep", action='store')
-	beta.add_argument("--normalize", help="Normalizing using totalgroup method", action='store')
+	beta.add_argument("--remove_lineage_file", help="list of samples to remove", action='store')
+	beta.add_argument("--keep_lineage_file", help="list of samples to keep", action='store')
 
 	args = parser.parse_args()
 	# #############################BEURACRATICS PROCEDURES
 	report_string += "######################################################################################################################################\n"
 	print "######################################################################################################################################"
-	report_string += "16S SIMPLE PARSER EXECUTION HAS INITIATED" + '\n'
-	print "16S SIMPLE PARSER EXECUTION HAS INITIATED"
+	report_string += "16S SIMPLE ANALYSER EXECUTION HAS INITIATED" + '\n'
+	print "16S SIMPLE ANALYSER EXECUTION HAS INITIATED"
 	report_string += "Initiation time: " + time.strftime("%Y-%m-%d %H:%M:%S") + '\n'
 	print "Initiation time: ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report_string += "###################################################################" + '\n'
@@ -211,121 +218,305 @@ def main(argv):
 	print "ARGUMENTS:"
 	report_string += "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + '\n'
 	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	# ########### EXECECUTIVE DIRECTORY CHECKING
+	
+	# ########### OUTPUT DIRECTORY CHECKING
 	if args.outputdir is None:
-		args.outputdir = outputdir
-		report_string += "Using Default output directory\n"
+		args.outputdir = DEFAULT_OUTPUTDIR
+	elif args.outputdir[-1] != '/':
+		args.outputdir += '/'
+	if isPathExist(args.outputdir) is False:
+		print "[--outputdir]: Output file directory has Access/Exist issue!!!"
+		report_string += "[--outputdir]: Output file directory has Access/Exist issue!!!" + '\n'
+		print "ABORTING!!!"
+		sys.exit(2)
+	else:
+		print "[--outputdir]: Output file directory is: ", args.outputdir
+		report_string += "[--outputdir]: Output file directory is: " + args.outputdir
 	global report_file
 	report_file = args.outputdir + "16S_simple_analyser_report.txt"
 	check_it_and_remove_it(report_file, True)
 	report(report_string)
-	args.jslib = jslib
-	args.execdir = execdir
-	if args.phylotype is None:
-		args.phylotype = phylotype
-		report("Using Default phylotype file")
-		print "Using Default phylotype file"
-	if args.design is None:
-		args.design = design
-		report("Using Default design file")
-		print "Using Default design file"
-
-	args.processors = str(processors)
-	args.name = name
-	args.remove_sample_file = remove_sample_file
-	args.keep_sample_file = keep_sample_file
-	args.taxlevel = taxlevel
-	args.normalize = normalize
-	
-	print "\n###################################################################"
-	report("\n###################################################################")
-	print "VERIFYING THE SANITY/VERSION OF EXECUTABLES IN EXECUTIVE DIRECTORY"
-	report("VERIFYING THE SANITY/VERSION OF EXECUTABLES IN EXECUTIVE DIRECTORY")
-	print "###################################################################\n"
-	report("###################################################################\n")
-	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-	report("0: ENVIRONMENT")
-	print "0: ENVIRONMENT"
-	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-	print "Operating System version is: ", platform.platform()
-	report("Operating System version is: " + platform.platform())
-	python_version = sys.version.split(' (')[0]
-	print "Python version is: ", python_version
-	report("Python version is: " + python_version)
-	if float(python_version[0:3]) < 2.7:
-		error("python version is older than 2.7")
-		print "python version is older than 2.7"
+	# ###########################################################################
+	# ########### PROCESSORS CHECKING
+	if args.processors is None:
+		args.processors = DEFAULT_PROCESSORS
+	else:
+		args.processors = str(args.processors)
+	if isint(args.processors) is False:
+		error("[--processors]: Number of processors should be a integer!!!")
+		print "[--processors]: Number of processors should be a integer!!!"
 		print "ABORTING!!!"
 		error("ABORTING!!!")
 		sys.exit(2)
-	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-	report("1: MOTHUR")
-	print "1: MOTHUR"
-	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-	mothur_exec_path = args.execdir + 'mothur'
-	if isFileExist(mothur_exec_path) is False:
-		error("Your mothur path has Access/Exist issue")
-		print "Your mothur path has Access/Exist issue"
+	elif int(args.processors) < 1:
+		error("[--processors]: Atleast one processor is needed!!!")
+		print "[--processors]: Atleast one processor is needed!!!"
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	elif int(args.processors) > int(multiprocessing.cpu_count()):
+		error("[--processors]: Number of assigned processors is higher than available CPUs: " + str(multiprocessing.cpu_count()))
+		print "[--processors]: Number of assigned processors is higher than available CPUs: ", str(multiprocessing.cpu_count())
+		error("Please select a value lower than " + str(multiprocessing.cpu_count()))
+		print "Please select a value lower than ", str(multiprocessing.cpu_count())
 		print "ABORTING!!!"
 		error("ABORTING!!!")
 		sys.exit(2)
 	else:
-		#report("mothur execution file is: " + mothur_exec_path)
-		print "mothur execution file is: ", mothur_exec_path
-		#report("Testing mothur executables: ")
-		print "Testing mothur executables: "
-		flag, stderr = execute_functions(test_mothur, args.processors, args.outputdir, 'multi', 'mothur', mothur_exec_path)
-		if flag is False:
-			#report("[" + FAILED_MARK + "]")
-			print "[" + FAILED_MARK + "]"
-			print "Execution of mothur failed!!!"
-			error("Execution of mothur failed!!!")
+		report("[--processors]: The Processors number is: " + args.processors)
+		print "[--processors]: The Processors number is: ", args.processors
+	# ###########################################################################
+	# ########### PREFIX NAME CHECKING
+	if args.prefix is None:
+		args.prefix = DEFAULT_PREFIX
+	elif args.prefix and args.prefix.strip():
+		args.prefix = slugify(args.prefix)
+	else:
+		error("[--prefix]: Prefix name can not be empty!!!")
+		print "[--prefix]: Prefix name can not be empty!!!"
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	print "[--prefix]: Prefix name is: ", args.prefix
+	report("[--prefix]: Prefix name is: " + args.prefix)
+	# ###########################################################################
+	# ########### EXECUTIVE DIRECTORY CHECKING
+	if args.execdir is None:
+		args.execdir = DEFAULT_EXECDIR
+	elif args.execdir[-1] != '/':
+		args.execdir += '/'
+	if isPathExist(args.execdir) is False:
+		error("[--execdir]: executables directory has Access/Exist issue!!!")
+		print "[--execdir]: executables directory has Access/Exist issue!!!"
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	else:
+		print "\n###################################################################"
+		report("\n###################################################################")
+		print "VERIFYING THE SANITY/VERSION OF EXECUTABLES IN EXECUTIVE DIRECTORY"
+		report("VERIFYING THE SANITY/VERSION OF EXECUTABLES IN EXECUTIVE DIRECTORY")
+		print "###################################################################\n"
+		report("###################################################################\n")
+		print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		report("0: ENVIRONMENT")
+		print "0: ENVIRONMENT"
+		print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		print "Operating System version is: ", platform.platform()
+		report("Operating System version is: " + platform.platform())
+		python_version = sys.version.split(' (')[0]
+		print "Python version is: ", python_version
+		report("Python version is: " + python_version)
+		if float(python_version[0:3]) < 2.7:
+			error("python version is older than 2.7")
+			print "python version is older than 2.7"
+			print "ABORTING!!!"
+			error("ABORTING!!!")
+			sys.exit(2)
+		print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		report("1: MOTHUR")
+		print "1: MOTHUR"
+		print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		mothur_exec_path = args.execdir + 'mothur'
+		if isFileExist(mothur_exec_path) is False:
+			error("Your mothur path has Access/Exist issue")
+			print "Your mothur path has Access/Exist issue"
 			print "ABORTING!!!"
 			error("ABORTING!!!")
 			sys.exit(2)
 		else:
-			target_lines = []
-			flag = parse_mothur_logfile(stderr, 'mothur v.', target_lines)
+			#report("mothur execution file is: " + mothur_exec_path)
+			print "mothur execution file is: ", mothur_exec_path
+			#report("Testing mothur executables: ")
+			print "Testing mothur executables: "
+			flag, stderr = execute_functions(test_mothur, args.processors, args.outputdir, 'multi', 'mothur', mothur_exec_path)
 			if flag is False:
-				print "This keyword is not avalaible: mothur v."
-				error("This keyword is not avalaible: mothur v.")
+				#report("[" + FAILED_MARK + "]")
+				print "[" + FAILED_MARK + "]"
+				print "Execution of mothur failed!!!"
+				error("Execution of mothur failed!!!")
 				print "ABORTING!!!"
 				error("ABORTING!!!")
 				sys.exit(2)
-			
-			report("mothur executables responding successfully!!!")
-			print "mothur executables responding successfully!!!"
-			report("version of mothur executables: " + target_lines[0])
-			print "version of mothur executables:", target_lines[0]
-	print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+			else:
+				target_lines = []
+				flag = parse_mothur_logfile(stderr, 'mothur v.', target_lines)
+				if flag is False:
+					print "This keyword is not avalaible: mothur v."
+					error("This keyword is not avalaible: mothur v.")
+					print "ABORTING!!!"
+					error("ABORTING!!!")
+					sys.exit(2)
+				
+				report("mothur executables responding successfully!!!")
+				print "mothur executables responding successfully!!!"
+				report("version of mothur executables: " + target_lines[0])
+				print "version of mothur executables:", target_lines[0]
+		print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		report("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+	# ###########################################################################
+	# ########### PHYLOTYPE FILE PROCESSING
+	if args.phylotype is not None:
+		if isFileExist(args.phylotype) is False:
+			error("[--phylotype]: phylotype file has Access/Exist issue")
+			print "[--phylotype]: phylotype file has Access/Exist issue"
+			print "ABORTING!!!"
+			error("ABORTING!!!")
+			sys.exit(2)
 
-	jslib_list = ['jquery-2.2.3.min.js', 'jquery.tablesorter.js', 'plotly-latest.min.js', 'bootstrap.min.css', 'bootstrap.min.js', 'tether.min.js', 'fontawesome.min.js', 'font-awesome.min.css']
-	flag = test_javascript_library(args.jslib, jslib_list)
+		if args.taxlevel is None:
+			print "GENUS As Default taxaonomy level will be used."
+			report("GENUS As Default taxaonomy level will be used.")
+			args.taxlevel = 'genus'
+		else:
+			print "The specified tax level will be extracted from phyloytpe", args.taxlevel
+			report("The specified tax level will be extracted from phyloytpe" + args.taxlevel)
+		entity_list = []
+		entity_list = parse_abundance_file(args.phylotype)
+		dict_of_entities = {}
+		dict_of_entities = construct_object(entity, entity_list)
+		shared_file_generated = create_shared_table(dict_of_entities, args.phylotype, args.taxlevel, args.prefix, args.outputdir)
+		args.shared = shared_file_generated
+		report("[--shared]: shared file is: " + args.shared)
+		print "[--shared]: shared file is: ", args.shared
+	# ###########################################################################
+	# ########### BIOM FILE PROCESSING
+	elif args.biom is not None:
+		if isFileExist(args.biom) is False:
+			error("[--biom]: biom file has Access/Exist issue")
+			print "[--biom]: biom file has Access/Exist issue"
+			print "ABORTING!!!"
+			error("ABORTING!!!")
+			sys.exit(2)
+		biom_to_shared = args.outputdir + 'biom_to_shared.txt'
+		flag = biom_to_shared_convert(biom_to_shared, args.biom, mothur_exec_path, args.processors, args.outputdir)
+		if flag is False:
+			print "Some this is not right during conversion"
+		else:
+			args.shared = biom_to_shared
+			report("[--shared]: shared file is: " + args.shared)
+			print "[--shared]: shared file is: ", args.shared
+	# ###########################################################################
+	# ########### SHARED FILE PROCESSING
+	elif args.shared is not None:
+		if isFileExist(args.shared) is False:
+			error("[--shared]: shared file has Access/Exist issue")
+			print "[--shared]: shared file has Access/Exist issue"
+			print "ABORTING!!!"
+			error("ABORTING!!!")
+			sys.exit(2)
+		else:
+			report("[--shared]: shared file is: " + args.shared)
+			print "[--shared]: shared file is: ", args.shared
+	if args.shared is None and args.biom is None and args.phylotype is None:
+		print "No Abundance file specified"
+		report("No Abundance file specified")
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+
+	# ###########################################################################
+	# ########### DESIGN FILE CHECKING
+	if args.design is None:
+		# DESIGN FILE MAKING
+		DEFAULT_DESIGN = args.outputdir + 'default_design.txt'
+		flag = make_default_design(args.shared, args.prefix, DEFAULT_DESIGN)
+		if flag is False:
+			error("[--design]: Something is wrong during design file making")
+			print "[--design]: Something is wrong during design file making"
+			print "ABORTING!!!"
+			error("ABORTING!!!")
+			sys.exit(2)
+		else:
+			args.design = DEFAULT_DESIGN
+			NO_BETA_DIVERSITY = True
+	elif isFileExist(args.design) is False:
+		print "[--design]: Design file has Access/Exist issue"
+		error("[--design]: Design file has Access/Exist issue")
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	elif isFileExist(args.design) is True:
+		NO_BETA_DIVERSITY = False
+	report("[--design]: Design file is: " + args.design)
+	print "[--design]: Design file is: ", args.design
+	# ###########################################################################
+	# ########### REMOVE LINEAGE FILE
+	if args.remove_lineage_file is None:
+		report("[--remove_lineage_file] Remove lineage file is disbaled")
+		print "[--remove_lineage_file] Remove lineage file is disbaled"
+		args.remove_lineage_file = False
+	elif isFileExist(args.remove_lineage_file) is False:
+		print "[--remove_lineage_file] Remove sample file has Access/Exist issue"
+		error("[--remove_lineage_file] Remove sample file has Access/Exist issue")
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	else:
+		report("[--remove_lineage_file] Remove lineage file: " + args.remove_lineage_file)
+		print "[--remove_lineage_file] Remove lineage file: ", args.remove_lineage_file
+	# ###########################################################################
+	# ########### KEEP LINEAGE FILE
+	if args.keep_lineage_file is None:
+		report("[--keep_lineage_file] keep lineage file is disbaled")
+		print "[--keep_lineage_file] keep lineage file is disbaled"
+		args.keep_lineage_file = False
+	elif isFileExist(args.keep_lineage_file) is False:
+		print "[--keep_lineage_file] keep lineage file has Access/Exist issue"
+		error("[--keep_lineage_file] keep lineage file has Access/Exist issue")
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	else:
+		report("[--keep_lineage_file] keep lineage file: " + args.keep_lineage_file)
+		print "[--keep_lineage_file] keep lineage file: ", args.keep_lineage_file
+
+	# #################################################################################
+	# ########### JAVASCRIPT LIBRARY CREATION
+	print "\n###################################################################"
+	report("\n###################################################################")
+	print "VERIFYING THE SANITY/VERSION OF JAVASCRIPT LIBRARIES"
+	report("VERIFYING THE SANITY/VERSION OF JAVASCRIPT LIBRARIES")
+	print "###################################################################\n"
+	report("###################################################################\n")
+	if args.jslib is None:
+		args.jslib = DEFAULT_JSLIB
+	elif args.jslib[-1] != '/':
+		args.jslib += '/'
+	if isPathExist(args.jslib) is False:
+		error("[--jslib]: executables directory has Access/Exist issue!!!")
+		print "[--jslib]: executables directory has Access/Exist issue!!!"
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	flag = test_javascript_library(args.jslib, DEFAULT_JS)
 	if flag is False:
 		report("JAVASCRIPT LIBRARY: " + FAILED_MARK)
 		print "JAVASCRIPT LIBRARY: ", FAILED_MARK
 		print "ABORTING!!!"
 		sys.exit(2)
-	js_path, alpha_path, data_path = visual_directory(args.outputdir, args.name, args.jslib, jslib_list)
-
-	entity_list = []
-	entity_list = parse_abundance_file(args.phylotype)
-	dict_of_entities = {}
-	dict_of_entities = construct_object(entity, entity_list)
-	shared_file_generated = create_shared_table(dict_of_entities, args.phylotype, args.taxlevel, args.name, args.outputdir)
-	args.shared = shared_file_generated
+	js_path, alpha_path, data_path = visual_directory(args.outputdir, args.prefix, args.jslib, DEFAULT_JS)
+	# ##############################################################################################################################################################
+	args.remove_sample_file = remove_sample_file
+	args.keep_sample_file = keep_sample_file
+	#args.taxlevel = taxlevel
+	args.normalize = normalize
 	# ##############################################################################################################################################################
 	# ##############################################################################################################################################################
+	# ##############################################################################################################################################################
+	# ##############################################################################################################################################################
+	# ##############################################################################################################################################################
+	# ##################### FIXED SHARED AND DESIGN FILE
 	# Step1: Fix shared file label and future modification
 	#for now we change the label from the distances to the specified args.name
-	fixed_shared = args.outputdir + args.name + '_FIXED_shared_file_STEP1.txt'
-	fixed_design = args.outputdir + args.name + '_FIXED_design_file_STEP1.txt'
-	flag = fix_shared_design_file(args.shared, args.design, args.name, fixed_shared, fixed_design)
+	#Then we slugify design file
+	fixed_shared = args.outputdir + args.prefix + '_FIXED_shared_file_STEP1.txt'
+	fixed_design = args.outputdir + args.prefix + '_FIXED_design_file_STEP1.txt'
+	flag = fix_shared_design_file(args.shared, args.design, args.prefix, fixed_shared, fixed_design)
 	if flag is True:
 		print "Shared file label is fixed."
 		print "# ##########################"
@@ -338,17 +529,17 @@ def main(argv):
 		print "Some thing is wrong with fix_shared_design_file"
 		sys.exit(2)
 	print "# ####################################################################################"
-
-	# ###############################
-	# Filtering Shared file based on Design samples
-	design_control_file = args.outputdir + args.name + '_design_control_file.txt'
+	# ##############################################################################################################################################################
+	# ##################### UPDATE SHARED FILE BASED ON DESIGN FILE
+	# Step2: UPDATE SHARED FILE BASED ON DESIGN FILE
+	design_control_file = args.outputdir + args.prefix + '_design_control_file.txt'
 	flag = design_to_control(args.design, design_control_file)
 	if flag is False:
 		print "ABORTING!!!"
 		sys.exit(2)
-	updated_shared_file = args.outputdir + args.name + '_UPDATED_shared_file_STEP2.txt'
-	updated_design_file = args.outputdir + args.name + '_UPDATED_design_file_STEP2.txt'
-	flag = update_shared_design_file(args.shared, args.design, design_control_file, updated_shared_file, updated_design_file, args.name, mothur_exec_path, args.processors, args.outputdir)
+	updated_shared_file = args.outputdir + args.prefix + '_UPDATED_shared_file_STEP2.txt'
+	updated_design_file = args.outputdir + args.prefix + '_UPDATED_design_file_STEP2.txt'
+	flag = update_shared_design_file(args.shared, args.design, design_control_file, updated_shared_file, updated_design_file, args.prefix, mothur_exec_path, args.processors, args.outputdir)
 	if flag is True:
 		print "Shared file initial update is successfull."
 		print "# ##########################"
@@ -361,47 +552,421 @@ def main(argv):
 		print "Something is wrong with update_shared_file."
 		sys.exit(2)
 	print "# ####################################################################################"
+	# ##############################################################################################################################################################
+	# ##################### FILTERING UNDESIRABLE LINEAGE
+	# Step3: Keep OTUs in shared file/Design file based on keep_otu_file.
+	if args.keep_lineage_file is not False and isFileExist(args.keep_lineage_file) is True:
+		otu_kept_shared_file = args.outputdir + args.prefix + '_OTUs_KEPT_shared_file_STEP3.txt'
+		otu_kept_design_file = args.outputdir + args.prefix + '_OTUs_KEPT_design_file_STEP3.txt'
+		print "keep_otu_file is set: so I am going to keep otu only listed."
+		flag = keep_otu_shared_design(args.shared, args.design, args.keep_lineage_file, otu_kept_shared_file, otu_kept_design_file, args.prefix, mothur_exec_path, args.processors, args.outputdir)
+		if flag is True:
+			print "keep_otu_shared_design is successfull."
+			print "# ##########################"
+			print "Shared file replaced with Step3 Shared file(OTUs_KEPT_shared_file_STEP3.txt)"
+			args.shared = otu_kept_shared_file
+			print "Design file replaced with Step3 Design file(OTUs_KEPT_design_file_STEP3.txt)"
+			args.design = otu_kept_design_file
+			print "# ##########################"
+		else:
+			print "Something is wrong with keep_otu_shared_design."
+			sys.exit(2)
+	else:
+		print "Since you did not specifiy keep_otu_file, the STEP3 will be skipped."
+	print "# ####################################################################################"
+	# ##############################################################################################################################################################
+	# ##############################################################################################################################################################
+	# Step4: Remove OTUs in shared file/Design file based on remove_otu_file.
+	if args.remove_lineage_file is not False and isFileExist(args.remove_lineage_file) is True:
+		otu_remove_shared_file = args.outputdir + args.prefix + '_OTUs_REMOVED_shared_file_STEP4.txt'
+		otu_remove_design_file = args.outputdir + args.prefix + '_OTUs_REMOVED_design_file_STEP4.txt'
+		print "remove_otu_file is set: so I am going to remove otu only listed."
+		flag = remove_otu_shared_design(args.shared, args.design, args.remove_lineage_file, otu_remove_shared_file, otu_remove_design_file, args.prefix, mothur_exec_path, args.processors, args.outputdir)
+		if flag is True:
+			print "remove_otu_shared_design is successfull."
+			print "# ##########################"
+			print "Shared file replaced with Step4 Shared file(OTUs_REMOVED_shared_file_STEP4.txt)"
+			args.shared = otu_remove_shared_file
+			print "Design file replaced with Step4 Design file(OTUs_REMOVED_design_file_STEP4.txt)"
+			args.design = otu_remove_design_file
+			print "# ##########################"
+		else:
+			print "Something is wrong with remove_otu_shared_design."
+			sys.exit(2)
+	else:
+		print "Since you did not specifiy remove_otu_file, the STEP4 will be skipped."
+	print "# ####################################################################################"
+	# ##############################################################################################################################################################
+	#STEP 6: Normalize
+	'''
+	normalized_shared_file = args.outputdir + args.name + '_NORMALIZED_shared_file_STEP7.txt'
+	normalized_design_file = args.outputdir + args.name + '_NORMALIZED_design_file_STEP7.txt'
+	flag = normalize_shared_design_maker(args.shared, args.design, args.name, normalized_shared_file, normalized_design_file, mothur_exec_path, args.processors, args.outputdir)
+	if flag is True:
+		print "normalize_shared_maker is successfull."
+		print "# ##########################"
+		print "Shared file replaced with Step7 Shared file(NORMALIZED_shared_file_STEP7.txt)"
+		args.shared = normalized_shared_file
+		print "Design file replaced with Step6 Design file(NORMALIZED_design_file_STEP7.txt)"
+		args.design = normalized_design_file
+		print "# ##########################"
+	else:
+		print "Something is wrong with normalize_shared_design_maker."
+		sys.exit(2)
+	'''
+	plotly_natural_abundance_barplot_html_string, plotly_natural_abundance_barplot_javascript_string = plotly_natural_abundance_barplot(args.shared)
+	
+	plotly_alpha_diversity_barplot_html_string, plotly_alpha_diversity_barplot_javascript_string = plotly_alpha_diversity_barplot(args.shared, mothur_exec_path, args.processors, args.outputdir)
+	
+	rarefaction_html_string, rarefaction_javascript_string = plotly_rarefaction_curve_plot(args.shared, mothur_exec_path, args.processors, args.outputdir)
+	
+	general_table_html_string = plotly_brief_statistics(args.shared, args.design)
+	raw_shared = args.shared
+	
 	
 	# ##############################################################################################################################################################
+	if NO_BETA_DIVERSITY is False:
+		ranked_shared = biomarker_discovery(args.shared, args.design, args.prefix, mothur_exec_path, args.processors, args.outputdir, data_path)
+		args.shared = ranked_shared
+	# ######################## NORMALIZED
+	normalized_shared_file = args.outputdir + args.prefix + '_NORMALIZED_shared_file_STEP7.txt'
+	normalized_design_file = args.outputdir + args.prefix + '_NORMALIZED_design_file_STEP7.txt'
+	flag = normalize_shared_design_maker(args.shared, args.design, args.prefix, normalized_shared_file, normalized_design_file, mothur_exec_path, args.processors, args.outputdir)
+	if flag is True:
+		print "normalize_shared_maker is successfull."
+		print "# ##########################"
+		print "Shared file replaced with Step7 Shared file(NORMALIZED_shared_file_STEP7.txt)"
+		args.shared = normalized_shared_file
+		print "Design file replaced with Step6 Design file(NORMALIZED_design_file_STEP7.txt)"
+		args.design = normalized_design_file
+		print "# ##########################"
+	else:
+		print "Something is wrong with normalize_shared_design_maker."
+		sys.exit(2)
+	# ######################## RELATIVE_ABUNDANCE
+	'''
+	relative_shared_file = args.outputdir + args.prefix + '_RELATIVE_shared_file_STEP7.txt'
+	relative_design_file = args.outputdir + args.prefix + '_RELATIVE_design_file_STEP7.txt'
+	flag = relative_abundance_shared_design_maker(args.shared, args.design, args.prefix, relative_shared_file, relative_design_file, mothur_exec_path, args.processors, args.outputdir)
+	if flag is True:
+		print "relative_abundance_shared_design_maker is successfull."
+		print "# ##########################"
+		print "Shared file replaced with Step7 Shared file(NORMALIZED_shared_file_STEP7.txt)"
+		args.shared = relative_shared_file
+		print "Design file replaced with Step6 Design file(NORMALIZED_design_file_STEP7.txt)"
+		args.design = relative_design_file
+		print "# ##########################"
+	else:
+		print "Something is wrong with normalize_shared_design_maker."
+		sys.exit(2)
+	'''
+	plotly_normalized_bacterial_abundance_barplot_html_string, plotly_normalized_bacterial_abundance_barplot_javascript_string = plotly_normalized_bacterial_abundance_barplot(args.shared, args.design)
+	plotly_normalized_bacterial_abundance_heatmap_html_string, plotly_normalized_bacterial_abundance_heatmap_javascript_string = plotly_normalized_bacterial_abundance_heatmap(args.shared, args.design)
+	plotly_normalized_bacterial_abundance_distributions_boxplot_html_string, plotly_normalized_bacterial_abundance_distributions_boxplot_javascript_string = plotly_normalized_bacterial_abundance_distribution_boxplot(args.shared, args.design)
+	plotly_normalized_bacterial_abundance_scatterplot_html_string, plotly_normalized_bacterial_abundance_scatterplot_javascript_string = plotly_normalized_bacterial_abundance_scatterplot(args.shared, args.design)
+
+	#abundance_heatmap_html_string, abundance_heatmap_javascript_string = plotly_alpha_diversity(args.shared, args.design, mothur_exec_path, args.processors, args.outputdir)
 	# ##############################################################################################################################################################
 	# Step7: RAREFACTION CURVE PLOT.
-	rarefaction_design_dict = {}
-	plotly_design_data_dict = {}
-	rarefaction_file = args.outputdir + args.name + '_RAREFACTION_file_STEP7.txt'
-	rarefaction_design_dict, plotly_design_data_dict = mothur_rarefaction_curve(args.shared, args.design, rarefaction_file, mothur_exec_path, args.processors, data_path, args.outputdir)
-	rarefaction_javascript_plotly(rarefaction_design_dict, plotly_design_data_dict, args.name, args.design, js_path)
-	#rarefaction_file_name = args.name + '_RAREFACTION_file_STEP7.txt'
-	#rarefaction_plotter(alpha_path, rarefaction_file_name, args.design, args.name)
-	print "# ####################################################################################"
+	#rarefaction_file = args.outputdir + args.prefix + '_RAREFACTION_file_STEP7.txt'
+	#rarefaction_html_string, rarefaction_javascript_string = plotly_rarefaction(raw_shared, args.design, rarefaction_file, mothur_exec_path, args.processors, data_path, args.outputdir)
 	
-	# ##############################################################################################################################################################
-	# ##############################################################################################################################################################
-	# Step8: Sample_ABUNDANCE_FILE.
-	sample_abundance_columns_dict = {}
-	sample_abundance_otu_dict = {}
-	simple_abundance_file = args.outputdir + args.name + '_SAMPLE_ABUNDANCE_file_STEP8.txt'
-	sample_abundance_columns_dict, sample_abundance_otu_dict = sample_abundance_table_plotly(args.shared, args.design, simple_abundance_file, data_path, args.outputdir)
-	sample_abundance_javascript_plotly(sample_abundance_columns_dict, sample_abundance_otu_dict, args.name, args.design, js_path)
-	#sample_abundance_file_name = args.name + '_SAMPLE_ABUNDANCE_file_STEP8.txt'
-	#sample_abundance_plotter(alpha_path, sample_abundance_file_name, args.design, args.name)
 	print "# ####################################################################################"
-
 	# ##############################################################################################################################################################
+	#simple_abundance_file = args.outputdir + args.prefix + '_SAMPLE_ABUNDANCE_file_STEP8.txt'
+	#sample_abundance_html_string, sample_abundance_javascript_string = plotly_sample_abundance_barchart(args.shared, args.design, simple_abundance_file, data_path, args.outputdir)
 	# ##############################################################################################################################################################
-	# Step9: Bacterial_ABUNDANCE_FILE.
-	bacterial_abundance_columns_dict = {}
-	bacterial_abundance_category_dict = {}
-	bacterial_abundance_file = args.outputdir + args.name + '_BACTERIAL_ABUNDANCE_file_STEP9.txt'
-	bacterial_abundance_columns_dict, bacterial_abundance_category_dict, bact_list = bacterial_abundance_table_plotly(args.shared, args.design, bacterial_abundance_file, data_path, args.outputdir)
-	bacterial_abundance_javascript_plotly(bacterial_abundance_columns_dict, bacterial_abundance_category_dict, bact_list, args.name, args.design, js_path)
-	#bacterial_abundance_file_name = args.name + '_BACTERIAL_ABUNDANCE_file_STEP9.txt'
-	#bacterial_abundance_plotter(alpha_path, bacterial_abundance_file_name, args.design, args.name)
-	print "# ####################################################################################"
+	#bacterial_abundance_file = args.outputdir + args.prefix + '_BACTERIAL_ABUNDANCE_file_STEP9.txt'
+	#bacterial_abundance_html_string, bacterial_abundance_javascript_string = plotly_bacterial_abundance_barchart(args.shared, args.design, bacterial_abundance_file, data_path, args.outputdir)
 
+	#abundance_heatmap_html_string, abundance_heatmap_javascript_string = plotly_abundance_heatmap(args.shared)
+	
+	#abundance_heatmap_html_string = ''
+	#abundance_heatmap_javascript_string = ''
+	# ##############################################################################################################################################################
+	#if NO_BETA_DIVERSITY is False:
+	#	beta_diversity_html_string, beta_diversity_javascript_string = beta_diversity_analysis(args.shared, args.design, args.prefix, mothur_exec_path, args.processors, args.outputdir, data_path, js_path)
+	#else:
+	#	beta_diversity_html_string = ''
+	#	beta_diversity_javascript_string = ''
 	# ##############################################################################################################################################################
 	# ##############################################################################################################################################################
 	# Step10: ALPHA DIVERSITY SUMMARY FILE.
-	alpha_diversity_summary_file = args.outputdir + args.name + '_ALPHA_DIVERSITY_SUMMARY_file_STEP10.txt'
+	#alpha_diversity_summary_file = args.outputdir + args.prefix + '_ALPHA_DIVERSITY_SUMMARY_file_STEP10.txt'
+	#flag = summary_analysis(args.shared, alpha_diversity_summary_file, mothur_exec_path, args.processors, data_path, args.outputdir)
+	#alpha_diversity_summary_table_header, alpha_diversity_summary_table_body = summary_table(alpha_diversity_summary_file, args.design)
+
+	html_file_string = ''
+	html_file_string += """
+		<!DOCTYPE html>
+					<html lang='en' xml:lang='en' xmlns='http://www.w3.org/1999/xhtml'>
+						<head>
+							<meta charset="utf-8">
+							<meta name="viewport" content="width=device-width, initial-scale=1">
+							<!--JQUERY LIBRARAY MAIN LIBRARY-->
+							<script type="text/javascript" src="https://code.jquery.com/jquery-1.12.3.js"></script>
+							<!--PLOTLY LIBRARAY MAIN LIBRARY-->
+							<script type="text/javascript" async src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_SVG"></script>
+							<script type="text/javascript" src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+							<!--BOOTSTRAP LIBRARAY MAIN LIBRARY-->
+							<script type="text/javascript" src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+							<link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"/>
+							<!--BOOTSTRAP DATATABLES LIBRARAY MAIN LIBRARY-->
+							<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.12/css/dataTables.bootstrap.min.css"/>
+							<script type="text/javascript" src="https://cdn.datatables.net/1.10.12/js/jquery.dataTables.min.js"></script>
+							<script type="text/javascript" src="https://cdn.datatables.net/1.10.12/js/dataTables.bootstrap.min.js"></script>
+							<!--FONTAWESOME LIBRARAY MAIN LIBRARY-->
+							<link rel="stylesheet" type="text/css" href="ttps://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"/>
+							<!--############################-->
+
+							<!--OPEN SCRIPTS-->
+								<script type="text/javascript">
+									$(document).ready(function() {
+										$('#brief_statistics_table').DataTable( {
+											"order": [[ 1, "asc" ]],
+											"paging": true,
+											"info": false,
+											"ordering": true,
+											"searching": false,
+											"scrollY": "600px",
+											"lengthMenu": [[25, 50, -1], [25, 50, "All"]]
+										} );
+										
+									});
+							//###################################################
+							//#######RELOAD ON RESIZE
+							window.addEventListener('resize', function () {
+							"use strict";
+							window.location.reload();
+							});
+
+							//###################################################
+									function linechart_filter(target_div){
+									var myPlot = document.getElementById(target_div);
+									var new_data = [];
+									myPlot.on('plotly_click', function(targetdata){
+									Plotly.deleteTraces(myPlot, targetdata.points[0].curveNumber)
+										});
+
+									};
+							//###################################################
+									function barchart_filter(target_div){
+									var myPlot = document.getElementById(target_div);
+									var new_data = [];
+									myPlot.on('plotly_click', function(targetdata){
+
+									var index_value = '';
+									index_value = targetdata.points[0].x;
+									var index_place = 0;
+									index_place  = targetdata.points[0].fullData.x.indexOf(index_value);
+									//console.log(index_value);
+									//console.log(index_place);
+									//console.log(targetdata);
+									main_data_size = myPlot.data.length;
+									new_data = myPlot.data
+									for (var main_data_index = 0; main_data_index < main_data_size; main_data_index++){
+										new_data[main_data_index].x.splice(index_place, 1);
+										new_data[main_data_index].y.splice(index_place, 1);
+
+									}
+									//console.log(data_sample_abundance_Cancer[0].x)
+									//Plotly.newPlot('myDiv', data, layout);
+									//Plotly.deleteTraces(myPlot, data.points[0].x)
+									//Plotly.newPlot('myDiv', data, layout);
+									Plotly.redraw(target_div, new_data)
+									//Plotly.relayout('myDiv',data)
+								});
+
+								};
+								//##############################################
+								function add_annotate(target_div){
+									var myPlot = document.getElementById(target_div);
+									var new_data = [];
+									myPlot.on('plotly_click', function(target_data){
+										var index_value = '';
+										index_value = target_data.points[0].x;
+										var index_place = 0;
+										index_place  = target_data.points[0].fullData.x.indexOf(index_value);
+									//console.log(index_value);
+									//console.log(index_place);
+									//console.log(targetdata);
+										main_data_size = myPlot.data.length;
+										new_data = myPlot.data;
+										var annotation_string = 'Max:';
+										var abundance_value_dict = {};
+										for (var main_data_index = 0; main_data_index < main_data_size; main_data_index++){
+											abundance_value_dict[myPlot.data[main_data_index].name] = myPlot.data[main_data_index].y[index_place];
+										}
+										sorted_abundance_value_array = sort_dictionary_by_value_descendingly(abundance_value_dict);
+										//console.log(sorted_abundance_value_array);
+										yPosition = 0;
+										for (var i = 0; i < 1; i++){
+
+											annotation_string += sorted_abundance_value_array[i] + '(' + abundance_value_dict[sorted_abundance_value_array[i]] + ')';
+											
+										}
+										console.log(target_data.points[0].fullData.y);
+										yPosition = target_data.points[0].fullData.y.reduce((a, b) => a + b, 0);
+										console.log(yPosition);
+										annotation = {
+											text: annotation_string,
+											x: index_value,
+											y: yPosition,
+											showarrow: true,
+											font: {
+												family: 'Avenir',
+												size: 10,
+												//color: '#ffffff'
+											},
+											align: 'center',
+											arrowhead: 2,
+											arrowsize: 1,
+											arrowwidth: 2,
+											arrowcolor: '#636363',
+											ax: 20,
+											ay: -30,
+											bordercolor: '#c7c7c7',
+											borderwidth: 2,
+											borderpad: 4,
+											//bgcolor: '#ff7f0e',
+											opacity: 0.8
+										}
+										annotations = myPlot.layout.annotations || [];
+										annotations.push(annotation);
+										Plotly.relayout(target_div,{annotations: annotations});
+
+									});
+								};
+								//##############################################
+								function add_comment(target_div, target_comment){
+									var myPlot = document.getElementById(target_div);
+									var myComment = document.getElementById(target_comment).value;
+									console.log(myComment);
+									var new_data = [];
+									myPlot.on('plotly_click', function(target_data){
+										var index_value = '';
+										index_value = target_data.points[0].x;
+										var index_place = 0;
+										index_place  = target_data.points[0].fullData.x.indexOf(index_value);
+										annotation = {
+											text: myComment,
+											x: index_value,
+											//y: yPosition,
+											showarrow: true,
+											font: {
+												family: 'Avenir',
+												size: 10,
+												//color: '#ffffff'
+											},
+											align: 'center',
+											arrowhead: 2,
+											arrowsize: 1,
+											arrowwidth: 2,
+											arrowcolor: '#636363',
+											ax: 20,
+											ay: -30,
+											bordercolor: '#c7c7c7',
+											borderwidth: 2,
+											borderpad: 4,
+											//bgcolor: '#ff7f0e',
+											opacity: 0.8
+										}
+										annotations = myPlot.layout.annotations || [];
+										annotations.push(annotation);
+										Plotly.relayout(target_div,{annotations: annotations});
+
+									});
+								};
+								//##############################################
+
+								function sort_dictionary_by_value_descendingly(myDict){
+									var keys = [];
+									for(var key in myDict){
+										keys.push(key);
+									}
+									return keys.sort(function(a,b){return myDict[b] - myDict[a]});
+
+								};
+								</script>
+							<!--############################-->
+							<!--STYLES-->
+							<style type="text/css">
+								body {
+								position: relative;
+								}
+								.table-hover tbody tr:hover td, .table-hover tbody tr:hover th {
+												background-color: yellow;
+											}
+								a:link {color: #669;}		/* unvisited link */
+								a:visited {color: #669;}	/* visited link */
+								a:hover {color: #669;}		/* mouse over link */
+								a:active {color: #669;}		/* selected link */
+								#design {padding-top:50px;}
+								#alpha_diversity {padding-top:50px;}
+								#rarefaction {padding-top:50px;}
+								#sample_abundance {padding-top:50px;}
+								#bacterial_abundance {padding-top:50px;}
+								#pcoa {padding-top:50px;}
+								#biomarker_discovery {padding-top:50px;}
+							</style>
+							<!--############################-->
+						</head>
+						<body>
+	"""
+	
+	html_file_string += plotly_natural_abundance_barplot_html_string
+	html_file_string += plotly_normalized_bacterial_abundance_barplot_html_string
+	html_file_string += plotly_normalized_bacterial_abundance_heatmap_html_string
+	html_file_string += plotly_normalized_bacterial_abundance_distributions_boxplot_html_string
+	html_file_string += plotly_normalized_bacterial_abundance_scatterplot_html_string
+	html_file_string += plotly_alpha_diversity_barplot_html_string
+	html_file_string += rarefaction_html_string
+	html_file_string += general_table_html_string
+	'''
+
+	html_file_string += abundance_heatmap_html_string
+	html_file_string += sample_abundance_html_string
+	
+	html_file_string += bacterial_abundance_html_string
+	
+	
+	#html_file_string += pca_html_string
+	#html_file_string += heatmap_html_string
+	html_file_string += beta_diversity_html_string
+	#html_file_string += alpha_diversity_summary_table_header
+	#html_file_string += alpha_diversity_summary_table_body
+	'''
+	
+	html_file_string += """
+	
+						<script type="text/javascript">
+	"""
+	#html_file_string += general_table_javascript_string
+	html_file_string += plotly_natural_abundance_barplot_javascript_string
+	html_file_string += plotly_normalized_bacterial_abundance_barplot_javascript_string
+	html_file_string += plotly_normalized_bacterial_abundance_heatmap_javascript_string
+	html_file_string += plotly_normalized_bacterial_abundance_distributions_boxplot_javascript_string
+	html_file_string += plotly_normalized_bacterial_abundance_scatterplot_javascript_string
+	html_file_string += plotly_alpha_diversity_barplot_javascript_string
+	html_file_string += rarefaction_javascript_string
+	'''
+	html_file_string += abundance_heatmap_javascript_string
+	html_file_string += sample_abundance_javascript_string
+	html_file_string += bacterial_abundance_javascript_string
+	
+	#html_file_string += pca_javascript_string
+	#html_file_string += heatmap_javascript_string
+	html_file_string += beta_diversity_javascript_string
+	'''
+	html_file_string += "\n</script>"
+	html_file_string += """
+	</html>
+	"""
+	write_string_down(html_file_string, 'python_test.html')
+	sys.exit(2)
+	# ##############################################################################################################################################################
+	# Step10: ALPHA DIVERSITY SUMMARY FILE.
+	alpha_diversity_summary_file = args.outputdir + args.prefix + '_ALPHA_DIVERSITY_SUMMARY_file_STEP10.txt'
 	flag = summary_analysis(args.shared, alpha_diversity_summary_file, mothur_exec_path, args.processors, data_path, args.outputdir)
 	alpha_diversity_summary_table_header, alpha_diversity_summary_table_body = summary_table(alpha_diversity_summary_file, args.design)
 	#alpha_diversity_summary_file_name = args.name + '_ALPHA_DIVERSITY_SUMMARY_file_STEP10.txt'
@@ -409,13 +974,960 @@ def main(argv):
 	print "# ####################################################################################"
 
 	pca_html_string_dict = {}
-	html_plotter(alpha_path, args.name, args.design, alpha_diversity_summary_table_header, alpha_diversity_summary_table_body, pca_html_string_dict)
+	html_plotter(alpha_path, args.prefix, args.design, alpha_diversity_summary_table_header, alpha_diversity_summary_table_body, pca_html_string_dict)
 	remove_mothur_log(os.getcwd())
 	make_archive(CURRENT_PATH, args.outputdir)
 	print "16S SIMPLE ANALYSER EXECUTION COMPLETED AT ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report("16S SIMPLE ANALYSER EXECUTION COMPLETED AT " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	#all_plotter(alpha_path, rarefaction_file_name, sample_abundance_file_name, bacterial_abundance_file_name, summary_table_header, summary_table_body, alpha_diversity_summary_file_name, biomarker_discovery_string, pca_html_string_dict, args.name, args.design)
-# ################################### ALPHA DIVERSITY SUMMARY FUNCTIONS ################### #
+# ################################### HTML BRIEF STATISTICS TABLE ############################### #
+
+
+def plotly_brief_statistics(shared_file, design_file):
+	headers_list = []
+	columns_dict = {}
+	headers_list, columns_dict = mothur_shared_parser(shared_file)
+	design_dictionary = design_dict_maker(design_file)
+	biom_matrix_header_list = ['Group', 'Sample Name', 'Total number', 'Classified number', 'Unclassified number', 'Classified percentage', 'Unclassified percentage']
+	no_unclassified_flag = True
+	if 'unclassified' in headers_list:
+		no_unclassified_flag = False
+	else:
+		no_unclassified_flag = True
+	thead_string = '								<thead>\n								<tr>\n'
+	for thead in biom_matrix_header_list:
+		thead_string += '									<th class="text-center">' + thead + '</th>\n'
+	thead_string += '								</tr>\n								</thead>\n'
+	tbody_string = '								<tbody>\n'
+	bacterial_list = []
+	
+	for each_head in headers_list:
+		if each_head.lower() in ['label', 'numotus', 'group']:
+			continue
+		else:
+			bacterial_list.append(each_head)
+	biom_matrix_length = len(columns_dict['numOtus'])
+
+	for each_row in range(biom_matrix_length):
+		each_row_list = []
+		for each_bacteria in bacterial_list:
+			each_row_list.append(columns_dict[each_bacteria][each_row])
+		each_row_list_int = list(map(int, each_row_list))
+		total_read_count = int(sum(each_row_list_int))
+		#we test for being outliers
+
+		tbody_string += '									<tr>\n'
+		tbody_string += '									<td class="text-center">' + str(design_dictionary[columns_dict['Group'][each_row]]) + '</td>\n'
+		tbody_string += '									<td class="text-center">' + str(columns_dict['Group'][each_row]) + '</td>\n'
+		
+		tbody_string += '									<td class="text-center">' + str(total_read_count) + '</td>\n'
+		if no_unclassified_flag is False:
+			unclassified_read_count = int(columns_dict['unclassified'][each_row])
+		else:
+			unclassified_read_count = 0
+		classified_read_count = int(total_read_count - unclassified_read_count)
+		tbody_string += '									<td class="text-center">' + str(classified_read_count) + '</td>\n'
+		tbody_string += '									<td class="text-center">' + str(unclassified_read_count) + '</td>\n'
+		tbody_string += '									<td class="text-center">' + str(round_float(percentage(classified_read_count, total_read_count))) + '</td>\n'
+		tbody_string += '									<td class="text-center">' + str(round_float(percentage(unclassified_read_count, total_read_count))) + '</td>\n'
+		tbody_string += '								</tr>\n'
+	tbody_string += '								</tbody>\n'
+
+	plotly_brief_statistics_table_html_string = ''
+	
+	plotly_brief_statistics_table_html_string = """
+								<div id="BRIEF_STATISTICS" class="container-fluid">
+									<div class="row">
+										<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+											<div class="panel panel-default">
+												<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+													<h3 class="panel-title">SEQUENCING BRIEF STATISTICS</h3>
+												</div>
+												<div class="panel-body" align="center">
+													<!-- Table -->
+													<div class="table-responsive">
+													<table id="brief_statistics_table" class="table table-striped table-bordered table-hover small" cellspacing="0" width="100%" style="font-family:'Avenir';">
+													""" + thead_string + """
+													""" + tbody_string + """
+													</table>
+													
+												</div>
+												</div>
+												<div class="panel-footer">
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+	"""
+
+	return plotly_brief_statistics_table_html_string
+# ################################### PLOTLY ALPHA DIVERSITY INDEXES #################### #
+
+
+def plotly_alpha_diversity_barplot(shared_file, mothur_exec_path, processors, outputdir):
+	flag, stderr = execute_functions(mothur_summary_single, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file)
+	if flag is False:
+		print "Execution of summary_single failed!!!"
+	else:
+		scanned_container = []
+		extension_list = ['.groups.summary']
+		flag = scandirs(outputdir, scanned_container, extension_list)
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	summary_file = scanned_container[0]
+	headers_list = []
+	columns_dict = {}
+	title_dictionary = {}
+	title_dictionary['nseqs'] = 'Number of sequences'
+	title_dictionary['simpson'] = 'Simpson diversity index'
+	title_dictionary['invsimpson'] = 'Inverse-Simpson diversity index'
+	title_dictionary['shannon'] = 'Shannon diversity index'
+	title_dictionary['sobs'] = 'Sobs<i>(observed number of species)</i> richness index'
+	#title_dictionary['sobs'] = 'Sobs richness index'
+	title_dictionary['ace'] = 'ACE<i>(Abundance-base Coverage Estimator)</i> richness index'
+	#title_dictionary['ace'] = 'ACE richness index'
+	alpha_summary_data_dict = {}
+	headers_list, columns_dict = mothur_result_parser(summary_file)
+	
+	for each_header in headers_list:
+		if each_header in ['label', 'group']:
+			continue
+		elif 'lci' in each_header or 'hci' in each_header:
+			continue
+		else:
+			alpha_summary_data_dict[each_header] = PLOTLY_GO.Bar(
+							y=list(map(float, columns_dict[each_header])),
+							x=columns_dict['group'],
+							name=each_header,
+							hoverinfo='all',
+			)
+			
+			'''
+			if each_header + '_lci' in columns_dict:
+				alpha_summary_data_dict[each_header].update(
+					error_y=dict(
+						type='data',
+						array=list(map(float, columns_dict[each_header + '_lci'])),
+						visible=True
+					)
+				)
+			'''
+	alpha_summary_data_dict = collections.OrderedDict(sorted(alpha_summary_data_dict.items()))
+	subplot_titles_list = []
+	for each_key in alpha_summary_data_dict.keys():
+		subplot_titles_list.append(title_dictionary[each_key])
+	matrix_dimension = int(math.ceil(len(alpha_summary_data_dict.keys()) / 2))
+	figure = plotly.tools.make_subplots(rows=matrix_dimension - 1, cols=matrix_dimension, subplot_titles=subplot_titles_list)
+
+	cartesian_length = range(1, matrix_dimension + 1)
+	cartesian_dimension_list = []
+	for each_cartesian in itertools.product(cartesian_length, repeat=2):
+		cartesian_dimension_list.append(each_cartesian)
+	cartesian_count = 0
+
+	for each_object in alpha_summary_data_dict:
+		#print each_object
+		#print cartesian_dimension_list[cartesian_count]
+		figure.append_trace(alpha_summary_data_dict[each_object], cartesian_dimension_list[cartesian_count][0], cartesian_dimension_list[cartesian_count][1])
+		cartesian_count += 1
+
+	figure['layout'].update(
+		height=600,
+		autosize=True,
+		showlegend=False,
+		#title='Alpha diversity index',
+		font=dict(family='Avenir', size=10),
+		titlefont=dict(
+			family='Avenir',
+			size=10,
+		#color='#7f7f7f'
+		)
+		
+		
+	)
+
+	abundance_heatmap_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = abundance_heatmap_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	abundance_heatmap_javascript_string = temp2_string.split('})', 1)[0]
+	abundance_heatmap_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	abundance_heatmap_html_string = """
+	<div id="ALPHA_DIVERSITY_INDEX_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">ALPHA DIVERSITY INDEX</h3>
+					</div>
+					<div class="panel-body" align="center">
+						<div id="alpha_diversity_index_plotly" class="panel-body"></div>
+					</div>
+					<div class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	heatmap_plotly_script = """
+	Plotly.newPlot('alpha_diversity_index_plotly', """ + abundance_heatmap_javascript_string + """);"""
+	return (abundance_heatmap_html_string, heatmap_plotly_script)
+# ################################### PLOTLY NATURAL ABUNDANCE BARPLOT ##################### #
+
+
+def plotly_natural_abundance_barplot(shared_file):
+	headers_list = []
+	columns_dict = {}
+	headers_list, columns_dict = mothur_shared_parser(shared_file)
+	OTU_name_list = []
+	for each_head in headers_list:
+		if each_head.lower() in ['label', 'group', 'numotus', 'unclassified']:
+			continue
+		else:
+			OTU_name_list.append(each_head)
+	Natural_abundance_barplot_objects_dict = {}
+	sample_list = sorted(columns_dict['Group'])
+	for each_OTU in OTU_name_list:
+		OTU_value_list = []
+		for each_sample_index in range(len(columns_dict['Group'])):
+			OTU_value_list.append(columns_dict[each_OTU][each_sample_index])
+
+		Natural_abundance_barplot_objects_dict[each_OTU] = PLOTLY_GO.Bar(
+			x=sample_list,
+			y=OTU_value_list,
+			name=each_OTU,
+			hoverinfo='all',
+		)
+	Natural_abundance_barplot_layout = PLOTLY_GO.Layout(
+		barmode='stack',
+		height=600,
+		autosize=True,
+		title='Natural abundance barplot',
+		showlegend=False,
+		hovermode='closest',
+		titlefont=dict(
+			family='Avenir',
+			size=16
+			#color='#7f7f7f'
+		),
+		font=dict(family='Avenir', size=10),
+		xaxis=dict(
+			autorange=True,
+			)
+	)
+	plotly_object_list = []
+	Natural_abundance_barplot_objects_dict = collections.OrderedDict(sorted(Natural_abundance_barplot_objects_dict.items()))
+	for each_object in Natural_abundance_barplot_objects_dict:
+		plotly_object_list.append(Natural_abundance_barplot_objects_dict[each_object])
+	#print plotly_object_list
+	figure = PLOTLY_GO.Figure(data=plotly_object_list, layout=Natural_abundance_barplot_layout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	plotly_html_string = """
+	<div id="PLOTLY_NATURAL_ABUNDANCE_BARPLOT_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_NATURAL_ABUNDANCE_BARPLOT_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">ALPHA DIVERSITY INDEX</h3>
+					</div>
+					<div id="PLOTLY_NATURAL_ABUNDANCE_BARPLOT_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_NATURAL_ABUNDANCE_BARPLOT" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_NATURAL_ABUNDANCE_BARPLOT_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//##########   PLOTLY_NATURAL_ABUNDANCE_BARPLOT   ####################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_NATURAL_ABUNDANCE_BARPLOT', """ + plotly_javascript_string + """);
+	"""
+	plotly_script += """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	return (plotly_html_string, plotly_script)
+# ################################### PLOTLY RAREFACTION CURVE PLOT  ####################### #
+
+
+def plotly_rarefaction_curve_plot(shared_file, mothur_exec_path, processors, outputdir):
+	# ###################################  RARAFACTION.SINGLE  #############################
+	frequency_value = '1000'
+
+	flag, stderr = execute_functions(mothur_rarefaction_single, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, frequency_value)
+	if flag is False:
+		print "Execution of mothur_rarefaction_single failed!!!"
+		sys.exit(2)
+	else:
+		scanned_container = []
+		extension_list = ['.groups.r_chao']
+		flag = scandirs(outputdir, scanned_container, extension_list)
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	flag = remove_extension_files(outputdir, '.rabund')
+	rarefaction_file = scanned_container[0]
+	# ###################################  PLOTTING IT  ###############################
+	headers_list = []
+	columns_dict = {}
+	headers_list, columns_dict = mothur_shared_parser(rarefaction_file)
+	number_of_sequences_sampled_list = columns_dict['numsampled']
+	sample_name_list = []
+	for each_head in headers_list:
+		if 'lci' in each_head:
+			continue
+		elif 'hci' in each_head:
+			continue
+		elif 'numsampled' in each_head:
+			continue
+		else:
+			sample_name_list.append(each_head)
+
+	Rarefaction_curve_plot_objects_dict = {}
+	for each_sample in sample_name_list:
+		sample_rarafaction_value_list = []
+		sample_rarafaction_value_list = list_variance(columns_dict[each_sample], 0.01)  # removing NA element and variant factors
+		Rarefaction_curve_plot_objects_dict[each_sample] = PLOTLY_GO.Scatter(
+			x=number_of_sequences_sampled_list,
+			y=sample_rarafaction_value_list,
+			name=each_sample.split('-')[1],
+			hoverinfo='name',
+			mode = 'lines',
+		)
+	Rarefaction_curve_plot_layout = PLOTLY_GO.Layout(
+		height=600,
+		autosize=True,
+		title='Rarefaction curve plot',
+		showlegend=True,
+		hovermode='closest',
+		titlefont=dict(
+			family='Avenir',
+			size=16
+			#color='#7f7f7f'
+		),
+		xaxis=dict(
+			showgrid=False,
+			title='Number of sampling effort',
+			titlefont=dict(
+				family='Avenir',
+				size=15,
+				)
+
+		),
+		yaxis=dict(
+			showgrid=True,
+			title='Number of detected species',
+			titlefont=dict(
+				family='Avenir',
+				size=15,
+				)
+		),
+	)
+	plotly_object_list = []
+	Rarefaction_curve_plot_objects_dict = collections.OrderedDict(sorted(Rarefaction_curve_plot_objects_dict.items()))
+	for each_object in Rarefaction_curve_plot_objects_dict:
+		plotly_object_list.append(Rarefaction_curve_plot_objects_dict[each_object])
+
+	figure = PLOTLY_GO.Figure(data=plotly_object_list, layout=Rarefaction_curve_plot_layout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	
+	plotly_html_string = """
+	<div id="PLOTLY_RAREFACTION_CURVE_PLOT_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_RAREFACTION_CURVE_PLOT_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">RAREFACTION_CURVE_PLOT</h3>
+					</div>
+					<div id="PLOTLY_RAREFACTION_CURVE_PLOT_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_RAREFACTION_CURVE_PLOT" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_RAREFACTION_CURVE_PLOT_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+						//####################################################################
+						//####################################################################
+						//####################################################################
+						//##########     PLOTLY_RAREFACTION_CURVE_PLOT #######################
+						//####################################################################
+						//####################################################################
+						//####################################################################
+						//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_RAREFACTION_CURVE_PLOT', """ + plotly_javascript_string + """);
+	"""
+	plotly_script += """
+						//####################################################################
+						//####################################################################
+						//####################################################################
+	"""
+
+	return (plotly_html_string, plotly_script)
+# ################################### PLOTLY NORMALIZED BACTERIAL ABUNDANCE BAR PLOT ####### #
+
+
+def plotly_normalized_bacterial_abundance_barplot(shared_file, design_file):
+	condensed_shared_dict = {}
+	condensed_shared_dict = condense_shared_file_by_design(shared_file, design_file)
+	
+	design_name_list = condensed_shared_dict.keys()
+	OTU_name_list = condensed_shared_dict[design_name_list[0]].keys()
+	#print sample_name_list
+	#print OTU_name_list
+	#print shared_dict[sample_name_list[0]]
+	
+	Normalized_bacterial_abundance_barplot_objects_dict = {}
+	for each_design in design_name_list:
+		Total_value_of_each_OTU_list = []
+		for each_OTU in OTU_name_list:
+			Total_value_of_each_OTU_list.append(sum(condensed_shared_dict[each_design][each_OTU]))
+		Normalized_bacterial_abundance_barplot_objects_dict[each_design] = PLOTLY_GO.Bar(
+			x=OTU_name_list,
+			y=Total_value_of_each_OTU_list,
+			name=each_design,
+			hoverinfo='all',
+		)
+	Normalized_bacterial_abundance_barplot_layout = PLOTLY_GO.Layout(
+		barmode='group',
+		height=600,
+		autosize=True,
+		title='Normalized bacterial abundance barplot',
+		showlegend=True,
+		hovermode='closest',
+		titlefont=dict(
+			family='Avenir',
+			size=16
+			#color='#7f7f7f'
+		),
+		font=dict(family='Avenir', size=10),
+		xaxis=dict(
+			autorange=True,
+		)
+	)
+	plotly_object_list = []
+	Normalized_bacterial_abundance_barplot_objects_dict = collections.OrderedDict(sorted(Normalized_bacterial_abundance_barplot_objects_dict.items()))
+	for each_object in Normalized_bacterial_abundance_barplot_objects_dict:
+		plotly_object_list.append(Normalized_bacterial_abundance_barplot_objects_dict[each_object])
+	#print plotly_object_list
+	figure = PLOTLY_GO.Figure(data=plotly_object_list, layout=Normalized_bacterial_abundance_barplot_layout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	plotly_html_string = """
+	<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT</h3>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//##########   PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT  ########
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT', """ + plotly_javascript_string + """);"""
+	plotly_script += """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+
+	return (plotly_html_string, plotly_script)
+# ################################### PLOTLY NORMALIZED BACTERIAL ABUNDANCE HEATMAP ####### #
+
+
+def plotly_normalized_bacterial_abundance_heatmap(shared_file, design_file):
+	condensed_shared_dict = {}
+	condensed_shared_dict = condense_shared_file_by_design(shared_file, design_file)
+
+	design_name_list = condensed_shared_dict.keys()
+	OTU_name_list = condensed_shared_dict[design_name_list[0]].keys()
+	z_list = []
+	y_list = []
+	x_list = []
+	for each_design in design_name_list:
+		Total_value_of_each_OTU_list = []
+		for each_OTU in OTU_name_list:
+			Total_value_of_each_OTU_list.append(sum(condensed_shared_dict[each_design][each_OTU]))
+		z_list.append(list(map(float, Total_value_of_each_OTU_list)))
+		y_list.append(each_design)
+	x_list = OTU_name_list
+
+	plotly_object_list = [
+		PLOTLY_GO.Heatmap(
+			z=z_list,
+			x=x_list,
+			y=y_list,
+			type='heatmap',
+			colorscale='Viridis'
+		)
+	]
+
+	Normalized_bacterial_abundance_heatmap_layout = PLOTLY_GO.Layout(
+		title='Normalized bacterial abundance heatmap',
+		titlefont=dict(
+			family='Avenir',
+			size=16
+			#color='#7f7f7f'
+		),
+		font=dict(family='Avenir', size=10),
+		height=600,
+		autosize=True,
+		showlegend=False,
+		hovermode='closest',
+		xaxis=dict(ticks=''),
+		yaxis=dict(ticks=''),
+		updatemenus=list([
+			dict(
+				buttons=list([
+					dict(
+						args=['colorscale', 'Viridis'],
+						label='Viridis',
+						method='restyle'
+					),
+					dict(
+						args=['colorscale', 'Portland'],
+						label='Portland',
+						method='restyle'
+					),
+					dict(
+						args=['colorscale', 'YIGnBu'],
+						label='YIGnBu',
+						method='restyle'
+					),
+					dict(
+						args=['colorscale', 'Earth'],
+						label='Earth',
+						method='restyle'
+					),
+				])
+			)
+		])
+	)
+		
+	figure = PLOTLY_GO.Figure(data=plotly_object_list, layout=Normalized_bacterial_abundance_heatmap_layout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	plotly_html_string = """
+	<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP</h3>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//##########   PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP  ########
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_HEATMAP', """ + plotly_javascript_string + """);"""
+	plotly_script += """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+
+	return (plotly_html_string, plotly_script)
+# ################################### PLOTLY NORMALIZED BACTERIAL ABUNDANCE DISTRIBUTION PLOT # #
+
+
+def plotly_normalized_bacterial_abundance_distribution_boxplot(shared_file, design_file):
+	condensed_shared_dict = {}
+	condensed_shared_dict = condense_shared_file_by_design(shared_file, design_file)
+
+	design_name_list = condensed_shared_dict.keys()
+	OTU_name_list = condensed_shared_dict[design_name_list[0]].keys()
+
+	x_axis = []
+	for each_design in design_name_list:
+		for each_OTU in OTU_name_list:
+			x_axis.append(each_design)
+
+	Normalized_bacterial_abundance_distribution_boxplot_objects_dict = {}
+	for each_OTU in OTU_name_list:
+		box_plot_value_list = []
+		for each_design in design_name_list:
+			box_plot_value_list.extend(condensed_shared_dict[each_design][each_OTU])
+		Normalized_bacterial_abundance_distribution_boxplot_objects_dict[each_OTU] = PLOTLY_GO.Box(
+			y=box_plot_value_list,
+			x=x_axis,
+			name=each_OTU,
+			boxmean=False,
+			hoverinfo='name+y',
+			boxpoints=False
+		)
+	Normalized_bacterial_abundance_distribution_boxplot_layout = PLOTLY_GO.Layout(
+		boxmode='group',
+		height=600,
+		autosize=True,
+		showlegend=False,
+		hovermode='closest',
+		title='Normalized bacterial abundance boxplot',
+		yaxis=dict(
+			title='Normalized abundance',
+			zeroline=False,
+			titlefont=dict(
+				family='Avenir',
+				size=12
+				#color='#7f7f7f'
+			),
+		),
+		updatemenus=list([
+			dict(
+				x=-0.05,
+				y=0.8,
+				buttons=list([
+					dict(
+						args=['boxmean', False],
+						label='No Trace',
+						method='restyle'
+					),
+					dict(
+						args=['boxmean', True],
+						label='Mean Only',
+						method='restyle'
+					),
+					dict(
+						args=['boxmean', 'sd'],
+						label='Mean & Standard Deviation',
+						method='restyle'
+					),
+					
+				]),
+				yanchor='top'
+			),
+			dict(
+				x=-0.05,
+				y=1,
+				buttons=list([
+					dict(
+						args=['boxpoints', False],
+						label='No Outliers',
+						method='restyle'
+					),
+					dict(
+						args=['boxpoints', 'outliers'],
+						label='Outliers',
+						method='restyle'
+					),
+					dict(
+						args=['boxpoints', 'suspectedoutliers'],
+						label='Outliers & Suspected Outliers',
+						method='restyle'
+					),
+					
+				]),
+				yanchor='top'
+			),
+		])
+	)
+	plotly_object_list = []
+	#Normalized_bacterial_abundance_barplot_objects_dict = collections.OrderedDict(sorted(Normalized_bacterial_abundance_barplot_objects_dict.items()))
+	for each_object in Normalized_bacterial_abundance_distribution_boxplot_objects_dict:
+		plotly_object_list.append(Normalized_bacterial_abundance_distribution_boxplot_objects_dict[each_object])
+	#print plotly_object_list
+	figure = PLOTLY_GO.Figure(data=plotly_object_list, layout=Normalized_bacterial_abundance_distribution_boxplot_layout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	plotly_html_string = """
+	<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT</h3>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//#####   NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT  ########
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_BOXPLOT', """ + plotly_javascript_string + """);"""
+	plotly_script += """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	return (plotly_html_string, plotly_script)
+# ################################### NORMALIZED_BACTERIAL_ABUNDANCE_DISTRIBUTIONS_SCATTERPLOT #################### #
+
+
+
+def plotly_normalized_bacterial_abundance_scatterplot(shared_file, design_file):
+	condensed_shared_dict = {}
+	condensed_shared_dict = condense_shared_file_by_design(shared_file, design_file)
+
+	design_name_list = condensed_shared_dict.keys()
+	OTU_name_list = condensed_shared_dict[design_name_list[0]].keys()
+
+	Normalized_bacterial_abundance_scatterplot_objects_dict = {}
+	each_design_value_dict = {}
+	for each_design in design_name_list:
+		each_design_value_dict[each_design] = []
+		for each_OTU in OTU_name_list:
+			each_design_value_dict[each_design].append(sum(condensed_shared_dict[each_design][each_OTU]))
+	trace = PLOTLY_GO.Scatter(
+		x=each_design_value_dict['Adenoma'],
+		y=each_design_value_dict['Cancer'],
+		mode='markers'
+	)
+	data = [trace]
+	ayout = PLOTLY_GO.Layout(
+		height=600,
+		width=600,
+		autosize=True,
+		)
+	figure = PLOTLY_GO.Figure(data=data, layout=ayout)
+
+	plotly_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = plotly_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	plotly_javascript_string = temp2_string.split('})', 1)[0]
+	plotly_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+
+	plotly_html_string = """
+	<div id="NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT_MAIN_DIV" class="container-fluid">
+		<div class="row">
+			<div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
+				<div class="panel panel-default" >
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT_HEADER_DIV" class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+						<h3 class="panel-title">NORMALIZED_BACTERIAL_ABUNDANCE_BARPLOT</h3>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT_BODY_DIV" class="panel-body" align="center">
+						<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT" class="panel-body"></div>
+					</div>
+					<div id="PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT_FOOTER_DIV" class="panel-footer">
+						<form class="form-inline" role="form">
+							<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_normal_mode" autocomplete="off" checked > Normal mode
+							</label>
+							<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+								<input type="radio" name="options" id="ALPHA_DIVERSITY_INDEX_DIV_delete_sample_mode" autocomplete="off" onclick="barchart_filter('ALPHA_DIVERSITY_INDEX_DIV');"> Click to Delete mode
+							</label-->
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	"""
+	plotly_script = """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//#####   NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT  ########
+					//####################################################################
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	plotly_script += """
+	Plotly.newPlot('PLOTLY_NORMALIZED_BACTERIAL_ABUNDANCE_SCATTERPLOT', """ + plotly_javascript_string + """);"""
+	plotly_script += """
+					//####################################################################
+					//####################################################################
+					//####################################################################
+	"""
+	return (plotly_html_string, plotly_script)
+# ################################### BETA DIVERSITY ANALYSIS FUNCTIONS #################### #
+
+
+def beta_diversity_analysis(shared_file, design_file, prefix, mothur_exec_path, processors, outputdir, data_path, js_path):
+	pca_dict = {}
+	heatmap_dict = {}
+	permuted_shared_list, permuted_design_list = shared_design_binomial_permutation(shared_file, design_file, mothur_exec_path, processors, outputdir, data_path)
+	pca_dict = pca_3d_analyser(permuted_shared_list, permuted_design_list, prefix, mothur_exec_path, processors, outputdir, data_path, js_path)
+	heatmap_dict = heatmap_analyser(permuted_shared_list, permuted_design_list, prefix, mothur_exec_path, processors, outputdir, data_path, js_path)
+	beta_diversity_html_string = """
+							<div id="BETA_DIVERSITY" class="container-fluid">
+									<h2>BETA Diversity analysis</h2>
+									<div class="row">
+									<dl class="dl-horizontal">
+										<dt>Description</dt>
+											<dd>
+											Beta Diversity sets of analysis
+											</dd>
+									</dl>
+									</div>
+									<div class="row" align="center">
+							"""
+	beta_diversity_javascript_string = ''
+	for each_key in pca_dict.keys():
+		beta_diversity_html_string += pca_dict[each_key][0]
+		beta_diversity_html_string += heatmap_dict[each_key][0]
+		beta_diversity_javascript_string += pca_dict[each_key][1]
+		beta_diversity_javascript_string += heatmap_dict[each_key][1]
+	beta_diversity_html_string += """
+							</div>
+							</div>"""
+	return (beta_diversity_html_string, beta_diversity_javascript_string)
 
 
 def summary_analysis(shared_file, summary_file_name, mothur_exec_path, processors, data_path, outputdir):
@@ -456,7 +1968,7 @@ def mothur_summary_single(processors, outputdir, stderr, stdout, run_pid, mothur
 	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
 	parameter_list = []
 	parameter_list.append('shared=' + shared_file)
-	parameter_list.append(',' + space + 'size=100000, iters=10000, calc=nseqs-simpson-invsimpson-shannon-npshannon-sobs-jack')
+	parameter_list.append(',' + space + 'size=100000, iters=10000, calc=nseqs-simpson-invsimpson-shannon-sobs-ace')
 	mothur_input_dictionary['parameters'] = parameter_list
 	make_file_object = mothur_process(mothur_input_dictionary)
 	exec_dict = {}
@@ -473,6 +1985,17 @@ def summary_table(shared_file, design_file):
 	rev_design_dict = design_dict_maker(design_file, 'reverse')
 	
 	table_header = ''
+	table_header += """
+	<div class="col-md-12">
+		<div class="panel panel-default">
+			<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+				<h3 class="panel-title">ALPHA SUMMARY</h3>
+			</div>
+	<div id="ALPHA_DIVERTSITY_SUMMARY_BODY" class="panel-body">
+									<!-- Table -->
+									<div class="table-responsive">
+										<table id="alpha_diversity_summary" class="table table-striped table-bordered table-hover small" cellspacing="0" width="100%">
+	"""
 	table_header += '\t\t\t\t\t\t<thead>\n'
 	table_header += '\t\t\t\t\t\t\t<tr>\n'
 	table_header += '\t\t\t\t\t\t\t\t<th class="text-center">State</th>\n'
@@ -520,43 +2043,107 @@ def summary_table(shared_file, design_file):
 						table_body += '\t\t\t\t\t\t\t\t\t\t\t<td>' + round_float(list_of_values_of_each_value[each_key][1]) + '</td>\n'
 				table_body += '\t\t\t\t\t\t\t\t\t\t</tr>\n'
 	table_body += '\t\t\t\t\t\t\t\t\t</tbody>\n'
+	table_body += """
+	</table>
+		</div>
+		</div>
+		</div>
+		
+		<!-- END of TABLE -->
+		
+	</div><!-- END of ALPHA_DIVERTSITY_SUMMARY_BODY -->
+	"""
 	
 	return (table_header, table_body)
 
 
+# ################################### NATURAL ABUNDANCE HEATMAP ########################### #
+
+def plotly_abundance_heatmap(shared_file):
+	headers_list = []
+	columns_dict = {}
+	z_list = []
+	y_list = []
+	x_list = []
+	headers_list, columns_dict = mothur_rarefaction_parser(shared_file)
+	#print headers_list
+	for each_head in headers_list:
+		if each_head.lower() in ['group', 'numotus', 'label']:
+			continue
+		else:
+			z_list.append(list(map(int, columns_dict[each_head])))
+			y_list.append(each_head)
+	
+	x_list = columns_dict['Group']
+	data = [
+		PLOTLY_GO.Heatmap(
+			z=z_list,
+			x=x_list,
+			y=y_list,
+			colorscale='YIGnBu'
+		)
+	]
+	layout = PLOTLY_GO.Layout(
+		title='Abundance Heatmap',
+		autosize=False,
+		showlegend=False,
+		hovermode='closest',
+	)
+	figure = PLOTLY_GO.Figure(data=data, layout=layout)
+	abundance_heatmap_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = abundance_heatmap_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	abundance_heatmap_javascript_string = temp2_string.split('})', 1)[0]
+	abundance_heatmap_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	abundance_heatmap_html_string = """
+	<div id="Abundance_Heatmap" class="container-fluid">
+	<div class="row" align="center">
+	<div class="col-md-12">
+		<div class="panel panel-default">
+			<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+				<h3 class="panel-title">ABUNDANCE HEATMAP</h3>
+			</div>
+			<div class="panel-body">
+				<div id="ABUNDANCE_HEATMAP" class="panel-body"></div>
+			</div>
+			<div class="panel-footer">
+			</div>
+		</div>
+	</div>
+	</div>
+	</div>
+	"""
+	heatmap_plotly_script = """
+	Plotly.newPlot('ABUNDANCE_HEATMAP', """ + abundance_heatmap_javascript_string + """);"""
+
+	return (abundance_heatmap_html_string, heatmap_plotly_script)
+
+
 # ################################### BACTERIAL ABUNDANCE FUNCTIONS ####################### #
 
-
-def bacterial_abundance_table_plotly(shared_file, design_file, bacterial_abundance_file, data_path, outputdir):
-	# ###############################################################################
-	# first we aggregated the similar OTU content
-	#aggregated_shared = outputdir + 'bacterial_abundance_aggregated_shared_file.txt'
-	#aggregate_otu_shared_file(shared_file, aggregated_shared, bacterial_abundance_file)
-	#copy_file(bacterial_abundance_file, data_path)
-	# ###############################################################################
-	# Second we parse it
+def plotly_bacterial_abundance_barchart(shared_file, design_file, bacterial_abundance_file, data_path, outputdir):
 	shared_dict = {}
 	shared_dict = parse_shared_file(shared_file)
-	#shared_dict = parse_shared_file(aggregated_shared)
+
 	reverse_design_dict = {}
 	reverse_design_dict = design_dict_maker(design_file, 'reverse')
 
 	sample_name_list = shared_dict.keys()
 	bacterial_list = shared_dict[sample_name_list[0]].keys()
-	#bacterial_list = sort_otus(shared_file)
+
 	bact_list = []
 	for each_bact in bacterial_list:
-		
 		bact = each_bact.split(';')
 		if len(bact) > 1:
 			bact_list.append(bact[-1])
 		else:
 			bact_list.append(bact[0])
-	
-	#print bacterial_abundance_category_dict
+
 	xaxis = list_to_string(bact_list, "','")
 	otu_name_color_dict = symbol_color_dict(bact_list, 'color_only')
-	#print bacterial_abundance_category_dict['Adenoma']
+
 	bacterial_abundance_sample_dict = {}
 	bacterial_abundance_columns_dict = {}
 	for each_design in reverse_design_dict:
@@ -576,119 +2163,160 @@ def bacterial_abundance_table_plotly(shared_file, design_file, bacterial_abundan
 			#print each_sample
 			otu_json_string = ''
 			#otu_json_string += '{\n' + 'name:"' + each_sample + '",\n'
-			otu_json_string += "\tvar " + slugify(each_sample) + "= {\n"
-			otu_json_string += "\tx:" + "['" + xaxis + "'],\n"
-			otu_json_string += "\t\ty:" + "["
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\tvar " + slugify(each_sample) + "= {\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\tx:" + "['" + xaxis + "'],\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\ty:" + "["
 			otu_json_string += list_to_string(shared_dict[each_sample].values(), ',')
 			otu_json_string += "],\n"
-			otu_json_string += "\t\ttype: 'bar',\n"
-			otu_json_string += "\t\thoverinfo: 'all',\n"
-			otu_json_string += "\t\tautobinx: false,\n"
-			otu_json_string += "\t\tmarker: {color: '"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\ttype: 'bar',\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\thoverinfo: 'all',\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\tautobinx: false,\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\tmarker: {color: '"
 			for each_bact in bact_list:
 				if each_bact in otu_name_color_dict:
 					otu_json_string += otu_name_color_dict[each_bact] + ', '
 				else:
 					otu_json_string += random_color() + ', '
 			otu_json_string += "'},\n"
-			otu_json_string += "\t\txbins: {size: 0.2},\n"
-			otu_json_string += "\t\torientation: 'v',\n"
-			otu_json_string += "\t\tname: '" + slugify(each_sample) + "'\n};"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\txbins: {size: 0.2},\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\torientation: 'v',\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\t\t\tname: '" + slugify(each_sample) + "'\n};"
 			
 			bacterial_abundance_columns_dict[each_design] += otu_json_string
-	
-	return(bacterial_abundance_columns_dict, bacterial_abundance_sample_dict, bact_list)
 
-
-def bacterial_abundance_javascript_plotly(abundance_design_dict, abundance_otu_dict, bact_list, name, design_file, js_path):
-	abundance_javascript_string = """
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	//##########     BACTERIAL Abundance table USING PLOTLY      #########
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	"""
-	minimumwidth = '1000'
-
+	bacterial_abundance_javascript_string = ''
+	bacterial_abundance_html_string = ''
 	design_dictionary_rev = design_dict_maker(design_file, 'reverse')
+	bacterial_abundance_javascript_string = """
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							//##########    BACTERIAL Abundance table USING PLOTLY      #############
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							"""
 	for each_design in design_dictionary_rev:
-		if len(bact_list) <= 30:
+		if len(design_dictionary_rev[each_design]) <= 30:
 			minimumwidth = '1000'
 		else:
-			minimumwidth = str(len(bact_list) * 30)
+			minimumwidth = str(len(design_dictionary_rev[each_design]) * 30)
 
-		abundance_javascript_string += abundance_design_dict[each_design]
-		abundance_javascript_string += "\tvar data_bacterial_abundance_" + each_design + " = [" + abundance_otu_dict[each_design] + "];\n"
-		abundance_javascript_string += """
-		var layout_bacterial_abundance_""" + each_design + """ = {
-			title: "Bacterial abundance of """ + each_design + """ ",
-			titlefont: {
-						family: 'Avenir',
-						size: 20 },
-			showlegend: false,
-			autosize: false,
-			width: """ + minimumwidth + """,
-			height: 500,
-			hovermode:'closest',
-			bargap: 0.25,
-			bargroupgap: 0.3,
-			barmode: 'stack',
-			
-			xaxis: {
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			yaxis: {
-				title: 'Total abundance value',
-				titlefont: {
-					family: 'Avenir',
-					size: 15},
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			margin: {
-				l: 50,
-				r: 50,
-				b: 200,
-				t: 100,
-				pad: 0
+		bacterial_abundance_javascript_string += bacterial_abundance_columns_dict[each_design]
+		bacterial_abundance_javascript_string += "\t\t\t\t\t\t\t\t\t\t\t\tvar data_bacterial_abundance_" + each_design + " = [" + bacterial_abundance_sample_dict[each_design] + "];\n"
+		bacterial_abundance_javascript_string += """
+								var layout_bacterial_abundance_""" + each_design + """ = {
+									title: "bacterial abundance of """ + each_design + """ ",
+									titlefont: {
+												family: 'Avenir',
+												size: 20 },
+									showlegend: false,
+									autosize: true,
+									//width: '100%',
+									//height: '100%',
+									hovermode:'closest',
+									bargap: 0.25,
+									bargroupgap: 0.3,
+									barmode: 'stack',
+									
+									xaxis: {
+										autorange: true,
+										tickfont: {
+											family: 'Avenir',
+											},
+									},
+									yaxis: {
+										title: 'Total abundance value',
+										titlefont: {
+											family: 'Avenir',
+											size: 15},
+										autorange: true,
+										tickfont: {
+											family: 'Avenir',
+											},
+									},
+									margin: {
+										l: 50,
+										r: 50,
+										b: 200,
+										t: 100,
+										pad: 0
 
-			},
-			
-
-			};
+									},
+									};
 		"""
-		abundance_javascript_string += """\n
-		//####################################################################
-		//####################################################################
-		//####################################################################
-		"""
-	
-	f = open(js_path + name + '_bacterial_abundance_plotly.js', 'w')
-	f.write(abundance_javascript_string)
-	f.close()
+		bacterial_abundance_javascript_string += """\n
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							"""
+	bacterial_abundance_html_string += """
+							<div id="bacterial_abundance" class="container-fluid">
+									<h2>Bacterial natural abundance bar plot</h2>
+									<div class="row">
+									<dl class="dl-horizontal">
+										<dt>Description</dt>
+											<dd>
+								Bacterial abundance bar plot
+											</dd>
+									</dl>
+								</div>
+								<div class="row" align="center">
+								"""
+	for each_design in design_dictionary_rev:
+		# ###########################################
+		bacterial_abundance_html_string += """
+							<div class="col-md-6">
+								<div class="panel panel-default">
+									<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+										<h3 class="panel-title">""" + each_design + """</h3>
+									</div>
+									<div class="panel-body">
+										<div id='div_bacterial_abundance_""" + each_design + """'></div>
+									</div>
+									<div class="panel-footer">
+										<form class="form-inline" role="form">
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_bacterial_abundance_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+											</label>
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_bacterial_abundance_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="barchart_filter('div_bacterial_abundance_""" + each_design + """');"> Click to Delete mode
+											</label>
+										</form>
+									</div>
+								</div>
+							</div>
+							"""
+		bacterial_abundance_javascript_string += """
+								Plotly.newPlot('div_bacterial_abundance_""" + each_design + """', data_bacterial_abundance_""" + each_design + """, layout_bacterial_abundance_""" + each_design + """, {
+								displaylogo: false,
+								displayModeBar: true,
+								modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],
+								});\n
+								"""
+	bacterial_abundance_html_string += """							</div><!--End of bacterial_abundance class=row div-->\n"""
+	bacterial_abundance_html_string += """							</div><!--End of bacterial_abundance class=container-fluid div-->\n"""
+	bacterial_abundance_javascript_string += """\n
+						//####################################################################
+						//####################################################################
+						//####################################################################
+						"""
+	#bacterial_abundance_javascript_string += "\n							</script>"
+	'''
+	html_file_string = ''
+	html_file_string += bacterial_abundance_html_string
+	html_file_string += bacterial_abundance_javascript_string
+	write_string_down(html_file_string, 'python_test.html')
+	'''
+	return(bacterial_abundance_html_string, bacterial_abundance_javascript_string)
 
 
 # ################################### SAMPLE ABUNDANCE FUNCTIONS ########################## #
 
-
-def sample_abundance_table_plotly(shared_file, design_file, simple_abundance_file, data_path, outputdir):
-	# ###############################################################################
-	# first we aggregated the similar OTU content
-	#aggregated_shared = outputdir + 'sample_abundance_aggregated_shared_file.txt'
-	#aggregate_otu_shared_file(shared_file, aggregated_shared, simple_abundance_file)
-	#copy_file(simple_abundance_file, data_path)
-	# ###############################################################################
-	# Second we parse it
+def plotly_sample_abundance_barchart(shared_file, design_file, simple_abundance_file, data_path, outputdir):
 	shared_dict = {}
 	shared_dict = parse_shared_file(shared_file)
-	#shared_dict = parse_shared_file(aggregated_shared)
+
 	reverse_design_dict = {}
 	reverse_design_dict = design_dict_maker(design_file, 'reverse')
 
@@ -702,7 +2330,6 @@ def sample_abundance_table_plotly(shared_file, design_file, simple_abundance_fil
 	for each_design in reverse_design_dict:
 		sample_list = reverse_design_dict[each_design]
 		otu_value_list = []
-		
 		xaxis = list_to_string(sample_list, "','")
 		if each_design not in abundance_columns_dict:
 			abundance_columns_dict[each_design] = ''
@@ -732,112 +2359,160 @@ def sample_abundance_table_plotly(shared_file, design_file, simple_abundance_fil
 			else:
 				abundance_otu_dict[each_design] += 'OTU' + str(otu_counter).zfill(10) + ','
 			
-			otu_json_string += "\tvar " + 'OTU' + str(otu_counter).zfill(10) + " = {\n"
-			otu_json_string += "\tx:" + "['" + xaxis + "'],\n"
-			otu_json_string += "\t\ty:" + "["
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\tvar " + 'OTU' + str(otu_counter).zfill(10) + " = {\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\tx:" + "['" + xaxis + "'],\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\ty:" + "["
 			for each_sample in sample_list:
 				otu_json_string += shared_dict[each_sample][each_otu] + ','
 			otu_json_string += "],\n"
-			otu_json_string += "\t\ttype: 'bar',\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\ttype: 'bar',\n"
 
-			otu_json_string += "\t\thoverinfo: 'all',\n"
-			otu_json_string += "\t\tautobinx: false,\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\thoverinfo: 'all',\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\tautobinx: false,\n"
 			if each_otu in otu_name_color_dict:
-				otu_json_string += "\t\tmarker: {color: '" + otu_name_color_dict[each_otu] + "'},\n"
+				otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\tmarker: {color: '" + otu_name_color_dict[each_otu] + "'},\n"
 			else:
-				otu_json_string += "\t\tmarker: {color: '" + random_color() + "'},\n"
-			otu_json_string += "\t\txbins: {size: 0.2},\n"
-			otu_json_string += "\t\torientation: 'v',\n"
+				otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\tmarker: {color: '" + random_color() + "'},\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\txbins: {size: 0.2},\n"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\torientation: 'v',\n"
 			
 			#otu_json_string += "\t\ttext:'" + slugify(otu) + "',\n"
-			otu_json_string += "\t\tname: '" + slugify(otu_hover_name) + "'\n};"
+			otu_json_string += "\t\t\t\t\t\t\t\t\t\t\t\tname: '" + slugify(otu_hover_name) + "'\n\t\t\t\t\t\t\t\t\t\t\t\t};"
 
 			abundance_columns_dict[each_design] += otu_json_string
-	
-	return (abundance_columns_dict, abundance_otu_dict)
+	#print abundance_columns_dict['Cancer']
+	#print abundance_otu_dict['Cancer']
 
-
-def sample_abundance_javascript_plotly(abundance_design_dict, abundance_otu_dict, name, design_file, js_path):
-	sample_abundance_javascript_string = """
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	//##########    SAMPLE Abundance table USING PLOTLY      ###################
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	"""
-	minimumwidth = '1000'
-
+	sample_abundance_javascript_string = ''
+	sample_abundance_html_string = ''
 	design_dictionary_rev = design_dict_maker(design_file, 'reverse')
+	sample_abundance_javascript_string = """
+						
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							//##########    SAMPLE Abundance table USING PLOTLY      #############
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							"""
 	for each_design in design_dictionary_rev:
 		if len(design_dictionary_rev[each_design]) <= 30:
 			minimumwidth = '1000'
 		else:
 			minimumwidth = str(len(design_dictionary_rev[each_design]) * 30)
 
-		sample_abundance_javascript_string += abundance_design_dict[each_design]
-		sample_abundance_javascript_string += "\tvar data_sample_abundance_" + each_design + " = [" + abundance_otu_dict[each_design] + "];\n"
+		sample_abundance_javascript_string += abundance_columns_dict[each_design]
+		sample_abundance_javascript_string += "\t\t\t\t\t\t\t\t\t\t\t\tvar data_sample_abundance_" + each_design + " = [" + abundance_otu_dict[each_design] + "];\n"
 		sample_abundance_javascript_string += """
-		var layout_sample_abundance_""" + each_design + """ = {
-			title: "Sample abundance of """ + each_design + """ ",
-			titlefont: {
-						family: 'Avenir',
-						size: 20 },
-			showlegend: false,
-			autosize: false,
-			width: """ + minimumwidth + """,
-			height: 500,
-			hovermode:'closest',
-			bargap: 0.25,
-			bargroupgap: 0.3,
-			barmode: 'stack',
-			
-			xaxis: {
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			yaxis: {
-				title: 'Total abundance value',
-				titlefont: {
-					family: 'Avenir',
-					size: 15},
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			margin: {
-				l: 50,
-				r: 50,
-				b: 200,
-				t: 100,
-				pad: 0
+								var layout_sample_abundance_""" + each_design + """ = {
+									title: "Sample abundance of """ + each_design + """ ",
+									titlefont: {
+												family: 'Avenir',
+												size: 20 },
+									showlegend: false,
+									autosize: true,
+									//width: '100%',
+									//height: '100%',
+									hovermode:'closest',
+									bargap: 0.25,
+									bargroupgap: 0.3,
+									barmode: 'stack',
+									
+									xaxis: {
+										autorange: true,
+										tickfont: {
+											family: 'Avenir',
+											},
+									},
+									yaxis: {
+										title: 'Total abundance value',
+										titlefont: {
+											family: 'Avenir',
+											size: 15},
+										autorange: true,
+										tickfont: {
+											family: 'Avenir',
+											},
+									},
+									margin: {
+										l: 50,
+										r: 50,
+										b: 200,
+										t: 100,
+										pad: 0
 
-			},
-			
-
-			};
+									},
+									};
 		"""
 		sample_abundance_javascript_string += """\n
-		//####################################################################
-		//####################################################################
-		//####################################################################
-		"""
-	
-	f = open(js_path + name + '_sample_abundance_plotly.js', 'w')
-	f.write(sample_abundance_javascript_string)
-	f.close()
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							"""
+	sample_abundance_html_string += """
+							<div id="sample_abundance" class="container-fluid">
+									<h2>Sample natural abundance bar plot</h2>
+									<div class="row">
+									<dl class="dl-horizontal">
+										<dt>Description</dt>
+											<dd>
+								The natural abundance of each sample bar plot
+											</dd>
+									</dl>
+								</div>
+								<div class="row" align="center">
+								"""
+	for each_design in design_dictionary_rev:
+		# ###########################################
+		sample_abundance_html_string += """
+							<div class="col-md-6">
+								<div class="panel panel-default">
+									<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+										<h3 class="panel-title">""" + each_design + """</h3>
+									</div>
+									<div class="panel-body">
+										<div id='div_sample_abundance_""" + each_design + """'></div>
+									</div>
+									<div class="panel-footer">
+										<form class="form-inline" role="form">
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_sample_abundance_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+											</label>
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_sample_abundance_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="barchart_filter('div_sample_abundance_""" + each_design + """');"> Click to Delete mode
+											</label>
+										</form>
+									</div>
+								</div>
+							</div>
+							"""
+		sample_abundance_javascript_string += """
+								Plotly.newPlot('div_sample_abundance_""" + each_design + """', data_sample_abundance_""" + each_design + """, layout_sample_abundance_""" + each_design + """, {
+								displaylogo: false,
+								displayModeBar: true,
+								modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],
+								});\n
+								"""
+	sample_abundance_html_string += """							</div><!--End of sample_abundance class=row div-->\n"""
+	sample_abundance_html_string += """							</div><!--End of sample_abundance class=container-fluid div-->\n"""
+	sample_abundance_javascript_string += """\n
+						//####################################################################
+						//####################################################################
+						//####################################################################
+						"""
+	#sample_abundance_javascript_string += "\n							</script>"
+
+	return(sample_abundance_html_string, sample_abundance_javascript_string)
+
 
 # ################################### RAREFACTION FUNCTIONS ############################### #
 
+def plotly_rarefaction(shared_file, design_file, rarefaction_file, mothur_exec_path, processors, data_path, outputdir):
+	# ######################################################################################
+	frequency_value = '1000'
 
-def mothur_rarefaction_curve(shared_file, design_file, rarefaction_file, mothur_exec_path, processors, data_path, outputdir):
-	#min_sh, max_sh, ave_sh, median_sh = shared_max_min(shared_file)
-	ave_sh = 0
-	flag, stderr = execute_functions(mothur_rarefaction_single, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, ave_sh)
+	flag, stderr = execute_functions(mothur_rarefaction_single, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, frequency_value)
 	if flag is False:
 		print "Execution of mothur_rarefaction_single failed!!!"
 		sys.exit(2)
@@ -859,46 +2534,1129 @@ def mothur_rarefaction_curve(shared_file, design_file, rarefaction_file, mothur_
 	flag = remove_extension_files(outputdir, '.rabund')
 	os.rename(scanned_container[0], rarefaction_file)
 	copy_file(rarefaction_file, data_path)
-	header = []
-	columns = {}
-	header, columns = mothur_result_parser(rarefaction_file)
-	
-	design_dictionary = {}
-	design_dictionary = design_dict_maker(design_file)
-	rarefaction_series_dict = {}
-	rarefaction_xaxis_string = ''
-	
-	for head in header:
-		if 'lci' in head or 'hci' in head:
-			continue
-		elif 'numsampled' in head:
-			rarefaction_xaxis_string = list_to_string(columns[head], ',')
-
-	for head in header:
+	# ######################################################################################
+	#print rarefaction_file
+	headers_list = []
+	columns_dict = {}
+	headers_list, columns_dict = mothur_rarefaction_parser(rarefaction_file)
+	#print headers_list
+	#rarefaction_XAXIS_string = list_to_string(columns_dict['numsampled'], ',')
+	rarefaction_XAXIS_string = list_to_string(columns_dict['numsampled'], ',')
+	#print rarefaction_XAXIS_string
+	filtered_headers_list = []
+	for head in headers_list:
 		if 'lci' in head or 'hci' in head or 'numsampled' in head:
 			continue
 		else:
-			rarefaction_series_dict[head] = "		var " + slugify(head) + "= {\n"
-			rarefaction_series_dict[head] += "			x:" + "[" + rarefaction_xaxis_string + "],\n"
-			rarefaction_series_dict[head] += "			y:" + "[" + list_to_string(list_variance(columns[head], 0.01), ',') + "],\n"
-			rarefaction_series_dict[head] += "			mode: 'scatter',\n"
-			rarefaction_series_dict[head] += "			mode: 'lines',\n"
-			rarefaction_series_dict[head] += "			hoverinfo: 'text',\n"
-			rarefaction_series_dict[head] += "			text:'" + head.split('-')[1] + "',\n"
-			rarefaction_series_dict[head] += "			name: '" + head.split('-')[1] + "'\n};\n"
+			filtered_headers_list.append(head)
+	#print filtered_headers_list
+	rarefaction_TRACE_dict = {}
+	for head in filtered_headers_list:
+		rarefaction_YAXIS_string = list_to_string(list_variance(columns_dict[head], 0.01), ',')
+		rarefaction_TRACE_dict[head] = "		var " + slugify(head) + "= {\n"
+		rarefaction_TRACE_dict[head] += "			x:" + "[" + rarefaction_XAXIS_string + "],\n"
+		rarefaction_TRACE_dict[head] += "			y:" + "[" + rarefaction_YAXIS_string + "],\n"
+		rarefaction_TRACE_dict[head] += "			mode: 'scatter',\n"
+		rarefaction_TRACE_dict[head] += "			mode: 'lines',\n"
+		rarefaction_TRACE_dict[head] += "			hoverinfo: 'text',\n"
+		rarefaction_TRACE_dict[head] += "			text:'" + head.split('-')[1] + "',\n"
+		rarefaction_TRACE_dict[head] += "			name: '" + head.split('-')[1] + "'\n"
+		rarefaction_TRACE_dict[head] += "		};\n"
+	design_dictionary = {}
+	design_dictionary = design_dict_maker(design_file)
+	#print design_dictionary
 	rarefaction_design_dict = {}
 	plotly_design_data_dict = {}
-	for each_sample in rarefaction_series_dict.keys():
-		each_sample_design = each_sample.split('-')[1]
-
-		if design_dictionary[each_sample_design] not in rarefaction_design_dict:
-			rarefaction_design_dict[design_dictionary[each_sample_design]] = rarefaction_series_dict[each_sample]
-			plotly_design_data_dict[design_dictionary[each_sample_design]] = slugify(each_sample) + ','
+	for each_sample in rarefaction_TRACE_dict.keys():
+		each_sample_name = each_sample.split('-')[1]
+		if design_dictionary[each_sample_name] not in rarefaction_design_dict:
+			rarefaction_design_dict[design_dictionary[each_sample_name]] = rarefaction_TRACE_dict[each_sample]
+			plotly_design_data_dict[design_dictionary[each_sample_name]] = slugify(each_sample) + ','
 		else:
-			rarefaction_design_dict[design_dictionary[each_sample_design]] += rarefaction_series_dict[each_sample]
-			plotly_design_data_dict[design_dictionary[each_sample_design]] += slugify(each_sample) + ','
+			rarefaction_design_dict[design_dictionary[each_sample_name]] += rarefaction_TRACE_dict[each_sample]
+			plotly_design_data_dict[design_dictionary[each_sample_name]] += slugify(each_sample) + ','
+	# ######################################################################################
+	#The Data is loaded now we want to arrange them based on design file
+	rarefaction_javascript_string = ''
+	rarefaction_html_string = ''
+	design_dictionary_rev = design_dict_maker(design_file, 'reverse')
+	rarefaction_javascript_string = """
 	
-	return (rarefaction_design_dict, plotly_design_data_dict)
+
+								//####################################################################
+								//####################################################################
+								//####################################################################
+								//##########     RAREFACTION USING PLOTLY      #######################
+								//####################################################################
+								//####################################################################
+								//####################################################################
+								//####################################################################
+								"""
+	for each_design in design_dictionary_rev:
+		rarefaction_javascript_string += rarefaction_design_dict[each_design]
+		rarefaction_javascript_string += "					var data_rarefaction_" + each_design + " = [" + plotly_design_data_dict[each_design] + "];\n"
+		rarefaction_javascript_string += """
+					var layout_rarefaction_""" + each_design + """ = {
+						title: "Rarefaction curve plot of """ + each_design + """ ",
+						titlefont: {
+									family: 'Avenir',
+									size: 20 },
+						showlegend: true,
+						legend: {
+							font: {
+								family: 'Avenir',
+										},
+							borderwidth: 0,
+							traceorder: 'normal'
+
+						},
+						autosize: true,
+						//width: '100%',
+						//height: '100%',
+						hovermode:'closest',
+
+						xaxis: {
+							title: 'Number of sequences sampled',
+							titlefont: {
+								family: 'Avenir',
+								size: 15 },
+							autorange: true,
+							tickfont: {
+								family: 'Avenir',
+								},
+						},
+						yaxis: {
+							title: 'Number of detected species',
+							titlefont: {
+								family: 'Avenir',
+								size: 15 },
+							autorange: true,
+							tickfont: {
+								family: 'Avenir',
+								},
+						},
+						
+
+						};
+					"""
+		rarefaction_javascript_string += """\n
+							//####################################################################
+							//####################################################################
+							//####################################################################
+							"""
+	#rarefaction_script += rarefaction_javascript_string + '\n'
+	rarefaction_html_string += """
+							<div id="rarefaction" class="container-fluid">
+									<h2>Rarefaction curve plot</h2>
+									<div class="row">
+									<dl class="dl-horizontal">
+										<dt>Description</dt>
+											<dd>
+								Rarefaction curves provide a way of comparing the richness observed in different samples.
+											</dd>
+									</dl>
+								</div>
+								<div class="row" align="center">
+							"""
+	for each_design in design_dictionary_rev:
+		# ###########################################
+		rarefaction_html_string += """
+							<div class="col-md-6">
+								<div class="panel panel-default">
+									<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+										<h3 class="panel-title">""" + each_design + """</h3>
+									</div>
+									<div class="panel-body">
+										<div id='div_rarefaction_""" + each_design + """'></div>
+									</div>
+									<div class="panel-footer">
+										<form class="form-inline" role="form">
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_rarefaction_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+											</label>
+											<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+											<input type="radio" name="options" id="div_rarefaction_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="linechart_filter('div_rarefaction_""" + each_design + """');"> Click to Delete mode
+											</label>
+										</form>
+									</div>
+								</div>
+							</div>
+							"""
+		rarefaction_javascript_string += """
+									Plotly.newPlot('div_rarefaction_""" + each_design + """', data_rarefaction_""" + each_design + """, layout_rarefaction_""" + each_design + """, {
+									displaylogo: false,
+									displayModeBar: true,
+									modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],
+									});\n
+									"""
+	rarefaction_html_string += """							</div><!--End of Rarefaction class=row div-->\n"""
+	rarefaction_html_string += """							</div><!--End of Rarefaction class=container-fluid div-->\n"""
+	#rarefaction_javascript_string += "\n							</script>"
+	rarefaction_javascript_string += """\n
+									//####################################################################
+									//####################################################################
+									//####################################################################
+									"""
+	return(rarefaction_html_string, rarefaction_javascript_string)
+
+# ################################### PCA 3D ANALYSER ##################################### #
+
+
+def pca_3d_analyser(permuted_shared_list, permuted_design_list, name, mothur_exec_path, processors, outputdir, data_path, js_path):
+	calc_list = ['braycurtis: Bray-Curtis index', 'manhattan: Manhattan distance(Taxicab geometry)']
+	pca_html_string_dict = {}
+	pca_javascript_string = ''
+	for each_shared, each_design in itertools.izip(permuted_shared_list, permuted_design_list):
+		PCA_name = each_shared.split('binomial_')[1]
+		PCA_name = PCA_name.split('.txt')[0]
+		distance_matrix = outputdir + name + '_' + PCA_name + '_braycurtis_distance_matrix.txt'
+		flag = distance_matrix_analyser(each_shared, calc_list[0], distance_matrix, mothur_exec_path, name, processors, outputdir)
+		if flag is False:
+			print "Something is wrong with distance_matrix_analyser."
+		pcoa_javastring, pcoa_sample_string, xmax, xmin, ymax, ymin, zmax, zmin = P3D_analyser_plotly(distance_matrix, each_design, calc_list[0], mothur_exec_path, processors, outputdir)
+		pca_javascript_string = ''
+		pca_javascript_string = pca_javascript_plotly(pcoa_javastring, pcoa_sample_string, PCA_name, each_design, xmax, xmin, ymax, ymin, zmax, zmin, calc_list[0], name, js_path)
+		pca_html_maker(pca_html_string_dict, pca_javascript_string, PCA_name, calc_list[0], name)
+		print "##################################################################################################################################"
+
+	return pca_html_string_dict
+
+
+def distance_matrix_analyser(shared_file, calc, matrix_name, mothur_exec_path, absname, processors, outputdir):
+	calc = calc.split(':')[0]
+	flag, stderr = execute_functions(mothur_distance_shared, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, calc)
+	if flag is False:
+		print "Execution of mothur_distance_matrix failed!!!"
+	else:
+		scanned_container = []
+		extension_list = ['.' + calc + '.' + absname + '.square.dist']
+		flag = scandirs(outputdir, scanned_container, extension_list)
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	os.rename(scanned_container[0], matrix_name)
+	return True
+
+
+def pca_html_maker(pca_string_dict, pca_javascript_string, PCA_name, calc, absname):
+	calc_name = calc.split(':')[0]
+	tag_name = '['
+	tag_name += PCA_name.replace('_vs_', ']-[')
+	tag_name += ']'
+	pca_html = ''
+	pca_html += """
+	<div class="col-md-6">
+		<div class="panel panel-default">
+			<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+				<h3 class="panel-title">""" + tag_name + """</h3>
+			</div>
+			<div class="panel-body">
+				<div id='PCOA_""" + PCA_name + '_' + calc_name + """'></div>
+			</div>
+			<div class="panel-footer">
+				<form class="form-inline" role="form">
+					<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+					<input type="radio" name="options" id="PCOA_""" + PCA_name + '_' + calc_name + """_normal_mode" autocomplete="off" checked > Normal mode
+					</label>
+					<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+					<input type="radio" name="options" id="PCOA_""" + PCA_name + '_' + calc_name + """_delete_sample_mode" autocomplete="off" onclick="linechart_filter('PCOA_""" + PCA_name + '_' + calc_name + """');"> Click to Delete mode
+					</label>
+					<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+					<input type="radio" name="options" id="PCOA_""" + PCA_name + '_' + calc_name + """_add_annotate_mode" autocomplete="off" onclick="add_comment('PCOA_""" + PCA_name + '_' + calc_name + """');"> Click to annotate mode
+					</label-->
+				</form>
+			</div>
+		</div>
+	</div>
+	"""
+	#pca_script = """<script type="text/javascript" src="./""" + absname + """_JS/""" + absname + """_""" + PCA_name + '_' + calc_name + """_pca_plotly.js"></script>\n"""
+	pca_plotly_script = """
+	Plotly.newPlot('PCOA_""" + PCA_name + '_' + calc_name + """', data_pca_""" + PCA_name + '_' + calc_name + """, layout_pca_""" + PCA_name + '_' + calc_name + """, {
+		displaylogo: false,
+		displayModeBar: true,
+		modeBarButtonsToRemove: ['sendDataToCloud', 'tableRotation', 'resetCameraDefault3d', 'resetCameraLastSave3d','hoverClosest3d'],
+		});
+	"""
+	pca_javascript_string += pca_plotly_script
+	pca_string_dict[PCA_name] = (pca_html, pca_javascript_string)
+	return True
+
+
+def P3D_analyser_plotly(dist_file, design_file, calc, mothur_exec_path, processors, outputdir):
+	flag, stderr = execute_functions(mothur_PCOA, processors, outputdir, 'multi', 'mothur', mothur_exec_path, dist_file)
+	if flag is False:
+		print "Execution of mothur_rarefaction_single failed!!!"
+	else:
+		scanned_container = []
+		extension_list = ['.pcoa.axes']
+		flag = scandirs(outputdir, scanned_container, extension_list)
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	dict_of_design = {}
+	pcoa_dict = {}
+	dict_of_design = design_dict_maker(design_file)
+	pcoafile = open(scanned_container[0], 'rU')
+	
+	xmax = ymax = zmax = 0
+	xmin = ymin = zmin = 0
+	for line in pcoafile:
+		line = line.rstrip()
+		line_split = line.split('\t')
+		if line_split[0].lower() == 'group':
+			continue
+		elif line_split[0] in dict_of_design.keys():
+			if len(line_split) < 4:
+				zero_list = ['0.0', '0.0', '0.0']
+				line_split.extend(zero_list)
+			#pcoa_dict[line_split[0]] = (dict_of_design[line_split[0]], '[' + line_split[1] + ',' + line_split[2] + ',' + line_split[3] + ']')
+			coord_list = []
+			coord_list.extend([line_split[1], line_split[2], line_split[3]])
+			pcoa_dict[line_split[0]] = (dict_of_design[line_split[0]], coord_list)
+			if isfloat(line_split[1]) and float(line_split[1]) > xmax: xmax = float(line_split[1])
+			if isfloat(line_split[2]) and float(line_split[2]) > ymax: ymax = float(line_split[2])
+			if isfloat(line_split[3]) and float(line_split[3]) > zmax: zmax = float(line_split[3])
+			if isfloat(line_split[1]) and float(line_split[1]) < xmin: xmin = float(line_split[1])
+			if isfloat(line_split[2]) and float(line_split[2]) < ymin: ymin = float(line_split[2])
+			if isfloat(line_split[3]) and float(line_split[3]) < zmin: zmin = float(line_split[3])
+	pcoafile.close()
+	dict_of_symbol_color = symbol_color_dict(list(set(dict_of_design.values())))
+	#print pcoa_dict
+	#sys.exit(2)
+	pcoa_sample_string = ''
+	pcoa_javastring = ''
+	#pcoa_javastring += "\n\tvar " + calc + "= {\n"
+	for key, value in pcoa_dict.iteritems():
+		pcoa_sample_string += key + ','
+		pcoa_javastring += "\n\tvar " + key + "= {\n"
+		pcoa_javastring += "\t\tx:" + "['" + value[1][0] + "'],\n"
+		pcoa_javastring += "\t\ty:" + "['" + value[1][1] + "'],\n"
+		pcoa_javastring += "\t\tz:" + "['" + value[1][2] + "'],\n"
+		pcoa_javastring += "\t\ttype: 'scatter3d',\n"
+		pcoa_javastring += "\t\thoverinfo: 'text+name',\n"
+		pcoa_javastring += "\t\thovermode: 'closest',\n"
+		pcoa_javastring += "\t\tmode: 'markers',\n"
+		pcoa_javastring += "\t\t'legendgroup': '" + value[0] + "',\n"
+		pcoa_javastring += "\t\tmarker: {color: '" + dict_of_symbol_color[value[0]][1] + "', size: 5, symbol: '" + dict_of_symbol_color[value[0]][0] + "', opacity: 0.9 },\n"
+		pcoa_javastring += "\t\tname: '" + value[0] + "',\n"
+		pcoa_javastring += "\t\ttext: '" + slugify(key) + "'\n"
+		pcoa_javastring += "\t};"
+		"""
+		pcoa_javastring += '\n\t\t\t{\n'
+		pcoa_javastring += '\t\t\t\tname: "' + key + '[' + value[0] + ']",\n'
+		pcoa_javastring += '\t\t\t\tdata: [' + value[1] + '],\n'
+		pcoa_javastring += '\t\t\t\tcolor: '" + dict_of_symbol_color[value[0]][1] + '",\n'
+		pcoa_javastring += '\t\t\t\tmarker:{symbol:"' + dict_of_symbol_color[value[0]][0] + '"}'
+		pcoa_javastring += '\t\t\t},\n'
+		"""
+	check_it_and_remove_it(scanned_container[0])
+	flag = remove_extension_files(outputdir, '.pcoa.loadings')
+	return (pcoa_javastring, pcoa_sample_string, xmax, xmin, ymax, ymin, zmax, zmin)
+
+
+def pca_javascript_plotly(pca_string, pca_sample_string, PCA_name, design_file, xmax, xmin, ymax, ymin, zmax, zmin, calc, absname, js_path):
+	calc_name = calc.split(':')[0]
+	xmax += (xmax / 2)
+	ymax += (ymax / 2)
+	zmax += (zmax / 2)
+	xmin += (xmin / 2)
+	ymin += (ymin / 2)
+	zmin += (zmin / 2)
+	xmax = str(xmax)
+	ymax = str(ymax)
+	zmax = str(zmax)
+	xmin = str(xmin)
+	ymin = str(ymin)
+	zmin = str(zmin)
+	sample_count = pca_sample_string.split(',')
+	if len(sample_count) > 25:
+		legend_status = 'false'
+	else:
+		legend_status = 'true'
+
+	pca_javascript_string = """
+	
+	//####################################################################
+	//####################################################################
+	//####################################################################
+	//##########     PCoA    #########
+	//####################################################################
+	//####################################################################
+	//####################################################################
+	"""
+	pca_javascript_string += pca_string
+	pca_javascript_string += "\tvar data_pca_" + PCA_name + '_' + calc_name + " = [" + pca_sample_string + "];\n"
+	
+	pca_javascript_string += """
+	var layout_pca_""" + PCA_name + '_' + calc_name + """ = {
+		title: 'PCOA - """ + calc + """ ',
+		titlefont: {
+			family: 'Avenir',
+			size: 20
+		},
+		//showlegend: """ + legend_status + """,
+		showlegend: false,
+		traceorder:'normal',
+		autosize: true,
+		//width: '100%',
+		//height: '100%',
+		
+		dragmode: true,
+		
+		margin: {
+			l: 25,
+			r: 25,
+			b: 50,
+			t: 50,
+			pad: 1
+		},
+		scene: {
+			xaxis: {
+				title: 'PC1',
+				titlefont: {
+					family: 'Avenir',
+					size: 15 },
+				range:[""" + xmin + """, """ + xmax + """],
+				autorange: false,
+				showbackground: true,
+				nticks:10,
+				autotick:true,
+				fixedrange: false,
+				gridcolor: "white",
+				linecolor: "white",
+				zerolinecolor: "white",
+				gridwidth:4,
+				backgroundcolor: "rgba(0,0,0,0.02)",
+				showspikes: false,
+			},
+			yaxis: {
+				title: 'PC2',
+				titlefont: {
+					family: 'Avenir',
+					size: 15
+				},
+				range:[""" + ymin + """, """ + ymax + """],
+				showbackground: true,
+				fixedrange: true,
+				nticks:5,
+				autorange: false,
+				gridcolor: "white",
+				linecolor: "white",
+				gridwidth:4,
+				zerolinecolor: "white",
+				backgroundcolor: "rgba(0,0,0,0.03)",
+				showspikes: false,
+				type:"linear"
+			},
+			zaxis: {
+				title: 'PC3',
+				titlefont: {
+					family: 'Avenir',
+					size: 15},
+				range:[""" + zmin + """, """ + zmax + """],
+				showbackground: true,
+				fixedrange: true,
+				gridcolor: "white",
+				linecolor: "white",
+				zerolinecolor: "white",
+				gridwidth:4,
+				backgroundcolor: "rgba(0,0,0,0.04)",
+				nticks:5,
+				autorange: false,
+				showspikes: false,
+			},
+			//cameraposition:[[0.4, 0.5, -0.3, -0.4], [0.1, 0, -0.1], 4],
+			aspectratio:{x:1,y:1,z:1},
+			aspectmode:'manual'
+		}
+
+	};
+	"""
+	pca_javascript_string += """\n
+	//####################################################################
+	//####################################################################
+	//####################################################################
+	"""
+	
+	f = open(js_path + absname + '_' + PCA_name + '_' + calc_name + '_pca_plotly.js', 'w')
+	f.write(pca_javascript_string)
+	f.close()
+	return pca_javascript_string
+
+
+# ################################### HEATMAP_FUNCTIONS ################################### #
+def heatmap_analyser(permuted_shared_list, permuted_design_list, name, mothur_exec_path, processors, outputdir, data_path, js_path):
+	calc_list = ['braycurtis: Bray-Curtis index', 'manhattan: Manhattan distance(Taxicab geometry)']
+	heatmap_html_string_dict = {}
+	for each_shared, each_design in itertools.izip(permuted_shared_list, permuted_design_list):
+		HEATMAP_name = each_shared.split('binomial_')[1]
+		HEATMAP_name = HEATMAP_name.split('.txt')[0]
+		#distance_matrix = outputdir + name + '_' + PCA_name + '_braycurtis_distance_matrix.txt'
+		#flag = distance_matrix_analyser(each_shared, calc_list[0], distance_matrix, mothur_exec_path, name, processors, outputdir)
+		#if flag is False:
+			#print "Something is wrong with distance_matrix_analyser."
+		#transposed_distance_matrix = outputdir + name + '_' + PCA_name + '_braycurtis_distance_matrix_transposed.txt'
+		#transpose_distance_matrix(distance_matrix, transposed_distance_matrix)
+		sample_matrix_file = outputdir + name + '_' + HEATMAP_name + '_sample_matrix.txt'
+		sample_matrix_transposed_file = outputdir + name + '_' + HEATMAP_name + '_sample_matrix_transposed.txt'
+		sample_matrix_maker(each_shared, sample_matrix_file)
+		transpose_distance_matrix(sample_matrix_file, sample_matrix_transposed_file)
+		
+		#biom_matrix_file = outputdir + name + '_' + PCA_name + '_biom_matrix.txt'
+		#biom_matrix_maker(each_shared, biom_matrix_file)
+		#heatmap_javascript_data, heatmap_javascript_layout = heatmap_2_generator(sample_matrix_transposed_file, biom_matrix_file)
+
+		heatmap_javascript_string = heatmap_generator(sample_matrix_transposed_file)
+		heatmap_html_maker(heatmap_html_string_dict, heatmap_javascript_string, HEATMAP_name, calc_list[0], name)
+		print "##################################################################################################################################"
+
+	return heatmap_html_string_dict
+
+
+def heatmap_html_maker(heatmap_string_dict, heatmap_javascript_string, HEATMAP_name, calc, absname):
+	calc_name = calc.split(':')[0]
+	tag_name = '['
+	tag_name += HEATMAP_name.replace('_vs_', ']-[')
+	tag_name += ']'
+	heatmap_html = ''
+	heatmap_html += """
+
+	<div class="col-md-6">
+		<div class="panel panel-default">
+			<div class="panel-heading" style="border:0px; background-color: #F4F9FD;">
+				<h3 class="panel-title">""" + tag_name + """</h3>
+			</div>
+			<div class="panel-body">
+				<div id='heatmap_""" + HEATMAP_name + '_' + calc_name + """'></div>
+			</div>
+			<div class="panel-footer">
+				<form class="form-inline" role="form">
+					<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+					<input type="radio" name="options" id="heatmap_""" + HEATMAP_name + '_' + calc_name + """_normal_mode" autocomplete="off" checked > Normal mode
+					</label>
+					<!--label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+					<input type="radio" name="options" id="heatmap_""" + HEATMAP_name + '_' + calc_name + """_delete_sample_mode" autocomplete="off" onclick="linechart_filter('heatmap_""" + HEATMAP_name + '_' + calc_name + """');"> Click to Delete mode
+					</label-->
+				</form>
+			</div>
+		</div>
+	</div>
+	"""
+	heatmap_plotly_script = """
+	Plotly.newPlot('heatmap_""" + HEATMAP_name + '_' + calc_name + """', """ + heatmap_javascript_string + """);"""
+	heatmap_string_dict[HEATMAP_name] = (heatmap_html, heatmap_plotly_script)
+	return True
+
+
+def heatmap_generator(distance_matrix):
+	# get data
+
+	data = np.genfromtxt(distance_matrix, names=True, dtype=float, delimiter="\t")
+	data_array = data.view((np.float, len(data.dtype.names)))
+	data_array = data_array.transpose()
+	labels = data.dtype.names
+	# Initialize figure by creating upper dendrogram
+	figure = FF.create_dendrogram(data_array, orientation='bottom', labels=labels)
+	for i in range(len(figure['data'])):
+		figure['data'][i]['yaxis'] = 'y2'
+	# Create Side Dendrogram
+	dendro_side = FF.create_dendrogram(data_array, orientation='right')
+	for i in range(len(dendro_side['data'])):
+		dendro_side['data'][i]['xaxis'] = 'x2'
+	# Add Side Dendrogram Data to Figure
+	figure['data'].extend(dendro_side['data'])
+	# Create Heatmap
+	dendro_leaves = dendro_side['layout']['yaxis']['ticktext']
+	#dendro_leaves = figure['layout']['xaxis']['tickvals']
+	dendro_leaves = list(map(int, dendro_leaves))
+	data_dist = pdist(data_array, 'braycurtis')
+	heat_data = squareform(data_dist)
+	heat_data = heat_data[dendro_leaves, :]
+	heat_data = heat_data[:, dendro_leaves]
+	heatmap = PLOTLY_GO.Data([
+		PLOTLY_GO.Heatmap(
+			x=dendro_leaves,
+			y=dendro_leaves,
+			z=heat_data,
+			colorscale='YIGnBu'
+		)
+	])
+	heatmap[0]['x'] = figure['layout']['xaxis']['tickvals']
+	heatmap[0]['y'] = dendro_side['layout']['yaxis']['tickvals']
+	# Add Heatmap Data to Figure
+	figure['data'].extend(PLOTLY_GO.Data(heatmap))
+	# Edit Layout
+	figure['layout'].update({
+		'title': 'PCoA: BrayCurtis index',
+		'autosize': True,
+		
+		'showlegend': False,
+		'hovermode': 'closest',
+	})
+	# Edit xaxis
+	figure['layout']['xaxis'].update({
+		'domain': [.15, 1],
+		'mirror': False,
+		'showgrid': False,
+		'showline': False,
+		'zeroline': False,
+		'ticks': ""})
+
+	# Edit xaxis2
+	figure['layout'].update({
+		'xaxis2': {
+			'domain': [0, .15],
+			'mirror': False,
+			'showgrid': False,
+			'showline': False,
+			'zeroline': False,
+			'showticklabels': False,
+			'ticks': ""}})
+	# Edit yaxis
+	figure['layout']['yaxis'].update({
+		'domain': [0, .85],
+		'mirror': False,
+		'showgrid': False,
+		'showline': False,
+		'zeroline': False,
+		'showticklabels': False,
+		'ticks': ""})
+	# Edit yaxis2
+	figure['layout'].update({
+		'yaxis2': {
+			'domain': [.825, .975],
+			'mirror': False,
+			'showgrid': False,
+			'showline': False,
+			'zeroline': False,
+			'showticklabels': False,
+			'ticks': ""}})
+	heatmap_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', show_link=False)
+	temp_string = heatmap_div.split('Plotly.newPlot(', 1)[1]
+	temp2_string = temp_string.split(',', 1)[1]
+	heatmap_javascript_string = temp2_string.split('})', 1)[0]
+	heatmap_javascript_string += """, displaylogo: false, displayModeBar: true, modeBarButtonsToRemove: ['zoom2d', 'select2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'sendDataToCloud', 'orbitRotation', 'tableRotation', 'pan3d', 'zoom3d','resetCameraDefault3d','resetCameraLastSave3d','hoverClosest3d'],}"""
+	#plot_html, plotdivid, width, height = _plot_html(figure, show_link=False, link_text="", validate=True, default_width='100%', default_height='100%', global_requirejs=False)
+	#write_string_down(plot_html, 'heatmap.html')
+	
+	return heatmap_javascript_string
+
+
+def heatmap_2_generator(sample_matrix, biom_matrix):
+	# get data
+	sample_data = np.genfromtxt(sample_matrix, names=True, dtype=float, delimiter="\t")
+	sample_data_array = sample_data.view((np.float, len(sample_data.dtype.names)))
+	sample_data_array = sample_data_array.transpose()
+	sample_labels = sample_data.dtype.names
+	# Initialize figure by creating upper dendrogram
+	figure = FF.create_dendrogram(sample_data_array, orientation='bottom', labels=sample_labels)
+	for i in range(len(figure['data'])):
+		figure['data'][i]['yaxis'] = 'y2'
+
+	biom_data = np.genfromtxt(biom_matrix, names=True, dtype=float, delimiter="\t")
+	biom_data_array = biom_data.view((np.float, len(biom_data.dtype.names)))
+	biom_data_array = biom_data_array.transpose()
+	biom_labels = biom_data.dtype.names
+
+	# Create Side Dendrogram
+	dendro_side = FF.create_dendrogram(biom_data_array, orientation='right')
+	for i in range(len(dendro_side['data'])):
+		dendro_side['data'][i]['xaxis'] = 'x2'
+	# Add Side Dendrogram Data to Figure
+	figure['data'].extend(dendro_side['data'])
+	# Create Heatmap
+	dendro_leaves = dendro_side['layout']['yaxis']['tickvals']
+	dendro_leaves = list(map(int, dendro_leaves))
+	data_dist = pdist(sample_data_array)
+	heat_data = squareform(data_dist)
+	heat_data = heat_data[dendro_leaves, :]
+	heat_data = heat_data[:, dendro_leaves]
+	heatmap = PLOTLY_GO.Data([
+		PLOTLY_GO.Heatmap(
+			x=dendro_leaves,
+			y=dendro_leaves,
+			z=heat_data,
+			colorscale='YIGnBu'
+		)
+	])
+	heatmap[0]['x'] = figure['layout']['xaxis']['tickvals']
+	heatmap[0]['y'] = dendro_side['layout']['yaxis']['tickvals']
+	# Add Heatmap Data to Figure
+	figure['data'].extend(PLOTLY_GO.Data(heatmap))
+	# Edit Layout
+	figure['layout'].update({
+		'width': 800,
+		'height': 800,
+		'showlegend': False,
+		'hovermode': 'closest',
+	})
+	# Edit xaxis
+	figure['layout']['xaxis'].update({
+		'domain': [.15, 1],
+		'mirror': False,
+		'showgrid': False,
+		'showline': False,
+		'zeroline': False,
+		'ticks': ""})
+
+	# Edit xaxis2
+	figure['layout'].update({
+		'xaxis2': {
+			'domain': [0, .15],
+			'mirror': False,
+			'showgrid': False,
+			'showline': False,
+			'zeroline': False,
+			'showticklabels': False,
+			'ticks': ""}})
+	# Edit yaxis
+	figure['layout']['yaxis'].update({
+		'domain': [0, .85],
+		'mirror': False,
+		'showgrid': False,
+		'showline': False,
+		'zeroline': False,
+		'showticklabels': False,
+		'ticks': ""})
+	# Edit yaxis2
+	figure['layout'].update({
+		'yaxis2': {
+			'domain': [.825, .975],
+			'mirror': False,
+			'showgrid': False,
+			'showline': False,
+			'zeroline': False,
+			'showticklabels': False,
+			'ticks': ""}})
+	heatmap_div = plotly.offline.plot(figure, include_plotlyjs=False, output_type='div', link_text='')
+	write_string_down(heatmap_div, 'heatmap.txt')
+	sys.exit(2)
+	heatmap_javascript_data = str(figure['data'])
+	heatmap_javascript_layout = str(figure['layout'])
+	
+	return(heatmap_javascript_data, heatmap_javascript_layout)
+
+
+# ################################### Biomarker_Discovery #################################### #
+def biomarker_discovery(shared_file, design_file, name, mothur_exec_path, processors, outputdir, data_path):
+	significant_OTUs_dict = {}
+	significant_OTUs_list = []
+	#kruskal_name = 'kruskal_wallis_' + temp_name
+	significant_OTUs_dict['kruskal_wallis'], kw_list = kw_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir)
+	significant_OTUs_list.extend(kw_list)
+	
+	#////////////////////////////////////
+	#lefse_name = 'lefse_' + temp_name
+	significant_OTUs_dict['lefse'], lefse_list = lefse_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir)
+	significant_OTUs_list.extend(lefse_list)
+
+	#////////////////////////////////////
+	#indicator_name = 'indicator_' + temp_name
+	significant_OTUs_dict['indicator'], indicator_list = indicator_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir)
+	significant_OTUs_list.extend(indicator_list)
+
+	#////////////////////////////////////
+	#metastats_name = 'metastats_' + temp_name
+	significant_OTUs_dict['metastats'], metastats_list = metastats_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir)
+	significant_OTUs_list.extend(metastats_list)
+	
+	if len(significant_OTUs_list) > 0:
+		ranked_shared = data_path + name + '_ranked_shared_file.txt'
+		flag = keep_OTUs_in_shared(shared_file, significant_OTUs_list, ranked_shared)
+		if flag is False:
+			print "Warning"
+
+	return ranked_shared
+
+
+def keep_OTUs_in_shared(shared_file, otu_control_list, new_shared_file):
+	
+	removing_otu_list = list(set(otu_control_list))
+	#print "Removing Following OTUs:", removing_otu_list
+	header = []
+	columns = {}
+	
+	header, columns = mothur_shared_parser(shared_file)
+	OTU_dict = {}
+	for head in header:
+		if head.lower() in ['group', 'numotus', 'label']:
+			continue
+		if head not in removing_otu_list:
+			continue
+		else:
+			OTU_dict[head] = columns[head]
+
+	numotus = str(len(OTU_dict.keys()))
+	new_shared_string = ''
+	new_shared_string = list_to_string(['label', 'Group', 'numOtus', ] + OTU_dict.keys())
+	new_shared_string += '\n'
+	
+	for i in range(len(columns['label'])):
+		
+		new_shared_string += columns['label'][i]
+		new_shared_string += '\t'
+		new_shared_string += columns['Group'][i]
+		new_shared_string += '\t'
+		new_shared_string += numotus
+		new_shared_string += '\t'
+		for each_otu in OTU_dict.keys():
+			new_shared_string += str(OTU_dict[each_otu][i])
+			new_shared_string += '\t'
+		new_shared_string += '\n'
+	write_string_down(new_shared_string, new_shared_file)
+	return True
+
+
+def kw_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	flag, stderr = execute_functions(mothur_kruskal_wallis, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, design_file)
+	if flag is False:
+		print "Execution of mothur_kruskal_wallis failed!!!"
+	else:
+		kw_container = []
+		extension_list = ['.' + name + '.kruskall_wallis']
+		flag = scandirs(outputdir, kw_container, extension_list)
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			sys.exit(2)
+	kw_dict = {}
+	kw_list = []
+	header = []
+	columns = {}
+	header, columns = mothur_result_parser(kw_container[0])
+	this_list = list_string_to_float(columns[header[2]])
+	if this_list is False:
+		empty_dict = {}
+		empty_list = []
+		print "EMPTY LIST DETECTED"
+		return (empty_dict, empty_list)
+	maxl, minl, avel, medl = list_stat(this_list)
+	flag, pw = significant_value(this_list, minl)
+	if flag is False:
+		print "Set significant limit to ", minl
+		sig_value = minl
+	else:
+		print "Set significant limit to ", pw
+		sig_value = pw
+	f = open(kw_container[0], 'rU')
+	
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if isfloat(line[2]) is False:
+			continue
+		if float(line[2]) < sig_value:
+			kw_dict[line[0]] = (line[1], line[2])
+			kw_list.append(line[0])
+	#check_it_and_remove_it(kw_container[0])
+	return (kw_dict, kw_list)
+
+
+def indicator_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	flag, stderr = execute_functions(mothur_indicator, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, design_file)
+	if flag is False:
+		print "Execution of mothur_kruskal_wallis failed!!!"
+	else:
+		indicator_container = []
+		extension_list = ['.indicator.summary']
+		flag = scandirs(outputdir, indicator_container, extension_list)
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			sys.exit(2)
+	indicator_dict = {}
+	indicator_list = []
+	header = []
+	columns = {}
+	header, columns = mothur_result_parser(indicator_container[0])
+	this_list = list_string_to_float(columns[header[3]])
+	if this_list is False:
+		empty_dict = {}
+		empty_list = []
+		return (empty_dict, empty_list)
+	maxl, minl, avel, medl = list_stat(this_list)
+	flag, pw = significant_value(this_list, minl)
+	if flag is False:
+		print "Set significant limit to ", minl
+		sig_value = minl
+	else:
+		print "Set significant limit to ", pw
+		sig_value = pw
+	f = open(indicator_container[0], 'rU')
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if '<0.001000' == line[3]:
+			indicator_dict[line[0]] = (line[2], '0.001')
+			indicator_list.append(line[0])
+		if isfloat(line[3]) is False:
+			continue
+		if float(line[3]) < sig_value:
+			indicator_dict[line[0]] = (line[2], line[3])
+			indicator_list.append(line[0])
+	#check_it_and_remove_it(indicator_container[0])
+	return (indicator_dict, indicator_list)
+
+
+def metastats_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	flag, stderr = execute_functions(mothur_metastats, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, design_file)
+	if flag is False:
+		print "Execution of mothur_kruskal_wallis failed!!!"
+	else:
+		metastats_container = []
+		extension_list = ['.metastats.logfile']
+		flag = scandirs(outputdir, metastats_container, extension_list, 'ex_partial')
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			
+		else:
+			for each_log in metastats_container:
+				check_it_and_remove_it(each_log)
+
+		metastats_container = []
+		extension_list = ['.metastats']
+		flag = scandirs(outputdir, metastats_container, extension_list, 'ex_partial')
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			sys.exit(2)
+	metastats_dict = {}
+	metastats_list = []
+	for each_metastats_file in metastats_container:
+		path, absname, ext = split_file_name(each_metastats_file)
+		compare_name = ext.split('.')[2]
+		new_metastats = outputdir + absname + '_new_metastats' + ext
+		flag = remove_line_from_file(each_metastats_file, 6, new_metastats)
+		header = []
+		columns = {}
+		header, columns = mothur_result_parser(new_metastats)
+		this_list = list_string_to_float(columns[header[7]])
+		if this_list is False:
+			empty_dict = {}
+			empty_list = []
+			return (empty_dict, empty_list)
+		new_list = []
+		new_list = remove_value_from_list(this_list, '0.0')
+		
+		maxl, minl, avel, medl = list_stat(new_list)
+		flag, pw = significant_value(new_list, minl)
+		if flag is False:
+			print "Set significant limit to ", minl
+			sig_value = minl
+		else:
+			print "Set significant limit to ", pw
+			sig_value = pw
+		f = open(new_metastats, 'rU')
+		for i in f:
+			i = i.rstrip()
+			line = i.split('\t')
+			if len(line) < 7:
+				continue
+			elif line[7] in ['-', ' ', '', None]:
+				continue
+			elif isfloat(line[7]) is False:
+				continue
+			elif float(line[7]) < sig_value and float(line[2]) > 0.0 and float(line[5]) > 0.0:
+				metastats_dict[line[0]] = (compare_name, line[7])
+				metastats_list.append(line[0])
+		check_it_and_remove_it(new_metastats)
+		check_it_and_remove_it(each_metastats_file)
+	return (metastats_dict, metastats_list)
+
+
+def lefse_analyser(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	flag, stderr = execute_functions(mothur_lefse, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, design_file)
+	if flag is False:
+		print "Execution of mothur_lefse failed!!!"
+	else:
+		lefse_container = []
+		extension_list = ['.' + name + '.lefse_summary']
+		flag = scandirs(outputdir, lefse_container, extension_list)
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			empty_dict = {}
+			empty_list = []
+			return (empty_dict, empty_list)
+
+	lefse_dict = {}
+	lefse_list = []
+	header = []
+	columns = {}
+	header, columns = mothur_result_parser(lefse_container[0])
+	this_list = list_string_to_float(columns[header[4]])
+	if this_list is False:
+		empty_dict = {}
+		empty_list = []
+		check_it_and_remove_it(lefse_container[0])
+		return (empty_dict, empty_list)
+	maxl, minl, avel, medl = list_stat(this_list)
+	flag, pw = significant_value(this_list, minl)
+	if flag is False:
+		print "Set significant limit to ", minl
+		sig_value = minl
+	else:
+		print "Set significant limit to ", pw
+		sig_value = pw
+	f = open(lefse_container[0], 'rU')
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if len(line) < 5:
+			continue
+		elif line[4] in ['-', ' ', '', None]:
+			continue
+		elif isfloat(line[4]) is False:
+			continue
+		if float(line[4]) < sig_value:
+			lefse_dict[line[0]] = (line[3], line[4])
+			lefse_list.append(line[0])
+	f.close()
+	check_it_and_remove_it(lefse_container[0])
+	return (lefse_dict, lefse_list)
+
+
+def mothur_kruskal_wallis(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, design_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'kruskal.wallis'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'design=' + design_file)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_indicator(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, design_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'indicator'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'design=' + design_file)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_lefse(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, design_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'lefse'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'design=' + design_file)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_metastats(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, design_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'metastats'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'design=' + design_file)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+# ################################### MOTHUR_FUNCTIONS #################################### #
+
+def mothur_remove_groups(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, removing_groups):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'remove.groups'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'groups=' + removing_groups)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
 
 
 def mothur_rarefaction_single(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, freq_value):
@@ -915,7 +3673,7 @@ def mothur_rarefaction_single(processors, outputdir, stderr, stdout, run_pid, mo
 	parameter_list = []
 	parameter_list.append('shared=' + shared_file)
 	parameter_list.append(',' + space + 'iters=100, calc=chao')
-	#parameter_list.append(',' + space + 'freq=' + str(freq_value))
+	parameter_list.append(',' + space + 'freq=' + str(freq_value))
 	mothur_input_dictionary['parameters'] = parameter_list
 	make_file_object = mothur_process(mothur_input_dictionary)
 	exec_dict = {}
@@ -927,76 +3685,28 @@ def mothur_rarefaction_single(processors, outputdir, stderr, stdout, run_pid, mo
 	return True
 
 
-def rarefaction_javascript_plotly(rarefaction_design_dict, plotly_design_data_dict, name, design_file, js_path):
-	rarefaction_javascript_string = """
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	//##########     RAREFACTION USING PLOTLY      #######################
-	//####################################################################
-	//####################################################################
-	//####################################################################
-	"""
-	design_dictionary_rev = design_dict_maker(design_file, 'reverse')
-	for each_design in design_dictionary_rev:
-		rarefaction_javascript_string += rarefaction_design_dict[each_design]
-		rarefaction_javascript_string += "\tvar data_rarefaction_" + each_design + " = [" + plotly_design_data_dict[each_design] + "];\n"
-		rarefaction_javascript_string += """
-		var layout_rarefaction_""" + each_design + """ = {
-			title: "Rarefaction curve plot of """ + each_design + """ ",
-			titlefont: {
-						family: 'Avenir',
-						size: 20 },
-			showlegend: true,
-			legend: {
-				font: {
-					family: 'Avenir',
-							},
-				borderwidth: 0,
-				traceorder: 'normal'
+def biom_to_shared_convert(shared_file, biom_file, mothur_exec_path, processors, outputdir):
+	flag, stderr = execute_functions(mothur_make_shared, processors, outputdir, 'multi', 'mothur', mothur_exec_path, biom_file)
+	if flag is False:
+		print "Execution of mothur_get_groups failed!!!"
+	else:
+		scanned_container = []
+		extension_list = ['.shared']
+		flag = scandirs(outputdir, scanned_container, extension_list, 'ex_partial')
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	os.rename(scanned_container[0], shared_file)
+	return True
 
-			},
-			autosize: true,
-			width: 1000,
-			height: 500,
-			hovermode:'closest',
-
-			xaxis: {
-				title: 'Number of sequences sampled',
-				titlefont: {
-					family: 'Avenir',
-					size: 15 },
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			yaxis: {
-				title: 'Number of detected species',
-				titlefont: {
-					family: 'Avenir',
-					size: 15 },
-				autorange: true,
-				tickfont: {
-					family: 'Avenir',
-					},
-			},
-			
-
-			};
-		"""
-		rarefaction_javascript_string += """\n
-		//####################################################################
-		//####################################################################
-		//####################################################################
-		"""
-	
-	f = open(js_path + name + '_' + 'rarefaction_plotly.js', 'w')
-	f.write(rarefaction_javascript_string)
-	f.close()
-
-
-# ################################### MOTHUR_FUNCTIONS #################################### #
 
 def remove_mothur_log(outputdir):
 	# scan directory for files with logfile extension and remove it
@@ -1024,6 +3734,29 @@ def mothur_get_groups(processors, outputdir, stderr, stdout, run_pid, mothur_exe
 	parameter_list = []
 	parameter_list.append('shared=' + shared_file)
 	parameter_list.append(',' + space + 'groups=' + removing_groups)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_make_shared(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, biom_file):
+	# grab path of paired fastq files and save it into container
+	mothur_input_dictionary = {}
+	command = 'make.shared'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('biom=' + biom_file)
 	mothur_input_dictionary['parameters'] = parameter_list
 	make_file_object = mothur_process(mothur_input_dictionary)
 	exec_dict = {}
@@ -1090,7 +3823,518 @@ def mothur_result_parser(mothur_result_file):
 	return (header, columns)
 
 
+def mothur_rarefaction_parser(rarefaction_file):
+	rarefile = open(rarefaction_file, 'rU')
+	header = []
+	header = rarefile.readline().rstrip().split('\t')
+	#print header
+	rarefile.close()
+	rarefile = open(rarefaction_file, 'rU')
+	reader = csv.DictReader(rarefile, header, delimiter="\t")
+	columns = {}
+	for row in reader:
+		for key, value in row.items():
+			if key == value:
+				continue
+			elif key in columns:
+				columns[key].append(value)
+			else:
+				columns[key] = [value]
+	return (header, columns)
+
+
+def mothur_shared_parser(shared_file):
+	rarefile = open(shared_file, 'rU')
+	header_list = []
+	header_list = rarefile.readline().rstrip().split('\t')
+	#print header_list
+	rarefile.close()
+	rarefile = open(shared_file, 'rU')
+	reader = csv.DictReader(rarefile, header_list, delimiter="\t")
+	columns_dict = {}
+	for row in reader:
+		for key, value in row.items():
+			if key == value:
+				continue
+			elif key in columns_dict:
+				columns_dict[key].append(value)
+			else:
+				columns_dict[key] = [value]
+	return (header_list, columns_dict)
+
+
+def mothur_update(shared_file, design_file, control_file, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	f = open(control_file, 'rU')
+	control_string = ''
+	control_data = []
+	for i in f:
+		i = i.rstrip()
+		control_data.append(i)
+		control_string += i + '-'
+	f.close()
+	#print control_data
+	#print control_string
+	f = open(design_file, 'rU')
+	new_design_string = 'Sample\tDesign\n'
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[0] not in control_data:
+			continue
+		new_design_string += line[0] + '\t' + line[1] + '\n'
+	f.close()
+	controlled_design_file = outputdir + absname + '_controlled_design.txt'
+	write_string_down(new_design_string, controlled_design_file)
+	keep_groups = control_string[:-1]
+	flag, stderr = execute_functions(mothur_get_groups, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, keep_groups)
+	if flag is False:
+		print "Execution of mothur_rarefaction_single failed!!!"
+	else:
+		control_container = []
+		extension_list = ['.pick' + ext]
+		flag = scandirs(outputdir, control_container, extension_list, 'ex_partial')
+		if flag is False:
+			print "This extension is not availble: ", extension_list
+			sys.exit(2)
+	controlled_shared_file = outputdir + absname + '_updated' + ext
+	os.rename(control_container[0], controlled_shared_file)
+	return (controlled_shared_file, controlled_design_file)
+
+
+def mothur_distance_shared(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, calc):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'dist.shared'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'calc=' + calc)
+	parameter_list.append(',' + space + 'iters=10000')
+	parameter_list.append(',' + space + 'output=square')
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_PCOA(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, dist_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'pcoa'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('phylip=' + dist_file)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def normalize_shared_design_maker(shared_file, design_file, name, new_shared_file, new_design_file, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	method = 'totalgroup'
+	flag, stderr = execute_functions(mothur_normalize, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, method)
+	if flag is False:
+		print "Execution of mothur_normalized failed!!!"
+	else:
+		path, absname, extension = split_file_name(shared_file)
+		scanned_container = []
+		extension_list = ['.' + name + '.norm.shared']
+		flag = scandirs(outputdir, scanned_container, extension_list, 'ex_partial')
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	os.rename(scanned_container[0], new_shared_file)
+	# we filter
+	f = open(new_shared_file, 'rU')
+	group_list = []
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[1].lower() == 'group':
+			continue
+		else:
+			group_list.append(line[1])
+	f.close()
+	new_design_string = 'Sample\tDesign\n'
+	f = open(design_file, 'rU')
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[0] in group_list:
+			new_design_string += i + '\n'
+	f.close()
+	write_string_down(new_design_string, new_design_file)
+	new_design_string = ''
+	return True
+
+
+def relative_abundance_shared_design_maker(shared_file, design_file, name, new_shared_file, new_design_file, mothur_exec_path, processors, outputdir):
+	path, absname, ext = split_file_name(shared_file)
+	#method = 'totalgroup'
+	flag, stderr = execute_functions(mothur_relative_abundance, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file)
+	if flag is False:
+		print "Execution of mothur_normalized failed!!!"
+	else:
+		path, absname, extension = split_file_name(shared_file)
+		scanned_container = []
+		extension_list = ['.relabund']
+		flag = scandirs(outputdir, scanned_container, extension_list)
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	os.rename(scanned_container[0], new_shared_file)
+	# we filter
+	f = open(new_shared_file, 'rU')
+	group_list = []
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[1].lower() == 'group':
+			continue
+		else:
+			group_list.append(line[1])
+	f.close()
+	new_design_string = 'Sample\tDesign\n'
+	f = open(design_file, 'rU')
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[0] in group_list:
+			new_design_string += i + '\n'
+	f.close()
+	write_string_down(new_design_string, new_design_file)
+	new_design_string = ''
+	return True
+
+
+def mothur_normalize(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file, method):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'normalize.shared'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'method=' + method)
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
+def mothur_relative_abundance(processors, outputdir, stderr, stdout, run_pid, mothur_exec_path, shared_file):
+	# grab path of paired fastq files and save it into container
+	space = ' '
+	mothur_input_dictionary = {}
+	command = 'get.relabund'
+	mothur_input_dictionary['command'] = command
+	mothur_input_dictionary['mothur_exec_path'] = mothur_exec_path
+	mothur_input_dictionary['processors'] = processors
+	mothur_input_dictionary['outputdir'] = outputdir
+	mothur_input_dictionary['nohup_in'] = 'nohup'
+	mothur_input_dictionary['nohup_out'] = '> ' + stdout + ' 2> ' + stderr + ' & echo $! > ' + run_pid
+	parameter_list = []
+	parameter_list.append('shared=' + shared_file)
+	parameter_list.append(',' + space + 'scale=totalgroup')
+	mothur_input_dictionary['parameters'] = parameter_list
+	make_file_object = mothur_process(mothur_input_dictionary)
+	exec_dict = {}
+	flag, exec_dict = make_file_object.execute_mothur_command()
+	if flag is False:
+		print "[FATAL-ERROR]: Commandline can not be executed!!!"
+		print "ABORTING!!!"
+		sys.exit(2)
+	return True
+
+
 # ################################### SPECIFIC_FUNCTIONS ################################## #
+
+def condense_shared_file_by_design(shared_file, design_file):
+	shared_dict = {}
+	shared_dict = parse_shared_file(shared_file)
+
+	reverse_design_dict = {}
+	reverse_design_dict = design_dict_maker(design_file, 'reverse')
+
+	sample_name_list = shared_dict.keys()
+	OTU_list = shared_dict[sample_name_list[0]].keys()
+
+	condensed_shared_dict = {}
+	for each_design in reverse_design_dict:
+		condensed_shared_dict[each_design] = {}
+		sample_list = reverse_design_dict[each_design]
+		for each_OTU in OTU_list:
+			OTU_total_count_list = []
+			for each_sample in sample_list:
+				OTU_total_count_list.append(float(shared_dict[each_sample][each_OTU]))
+			condensed_shared_dict[each_design][each_OTU] = []
+			condensed_shared_dict[each_design][each_OTU] = OTU_total_count_list
+	#print condensed_shared_dict[reverse_design_dict.keys()[0]]
+	return condensed_shared_dict
+
+
+def remove_sample_shared_design(shared_file, design_file, control_list, new_shared_file, new_design_file, name, mothur_exec_path, processors, outputdir):
+	# First we are reading sample listed in control file in string and list
+	'''
+	f = open(control_file, 'rU')
+	control_string = ''
+	control_data = []
+	for i in f:
+		i = i.rstrip()
+		control_data.append(i)
+		control_string += i + '-'
+	control_string = control_string[:-1]
+	f.close()
+	'''
+	control_string = control_list[0]
+	control_data = control_list
+	# Second we are filtering design file based on what is listed on control list
+	new_design_string = ''
+	f = open(design_file, 'rU')
+	for i in f:
+		i = i.rstrip()
+		line = i.split('\t')
+		if line[0] not in control_data:
+			new_design_string += i + '\n'
+	f.close()
+	o = open(new_design_file, 'w')
+	o.write(new_design_string)
+	o.close()
+	new_design_string = ''
+	control_data = []
+	#Third we are going to keep samples that only available in list at shared file
+	flag, stderr = execute_functions(mothur_remove_groups, processors, outputdir, 'multi', 'mothur', mothur_exec_path, shared_file, control_string)
+	if flag is False:
+		print "Execution of mothur_get_groups failed!!!"
+	else:
+		path, absname, extension = split_file_name(shared_file)
+		scanned_container = []
+		extension_list = ['.' + name + '.pick' + extension]
+		flag = scandirs(outputdir, scanned_container, extension_list, 'ex_partial')
+		print "Scanning.."
+		if flag is False:
+			print "Failed :("
+			print "This extension is not available: ", extension_list
+			sys.exit(2)
+		else:
+			print "NICE :) Found it"
+			counter = 1
+			for file in scanned_container:
+				print "File#", str(counter), ":", file
+				counter += 1
+	os.rename(scanned_container[0], new_shared_file)
+	return True
+
+
+def remove_otu_shared_design(shared_file, design_file, otu_control_list, new_shared_file, new_design_file, name, mothur_exec_path, processors, outputdir):
+	# First we are reading sample listed in control file in string and list
+	'''f = open(otu_control_file, 'rU')
+	otu_control_list = []
+	for i in f:
+		i = i.rstrip()
+		otu_control_list.append(i)
+	f.close()
+	'''
+	# #####################################################
+	remove_otu_list = list(set(otu_control_list))
+	print "Removing Following OTUs:", remove_otu_list
+	header = []
+	columns = {}
+	
+	header, columns = mothur_shared_parser(shared_file)
+	OTU_dict = {}
+	sim_head = ''
+	for head in header:
+		if ';' in head:
+			sim_head_list = head.split(';')
+			sim_head = ';'.join(sim_head_list[1:])
+			#print sim_head
+		elif head.lower() in ['group', 'numotus', 'label']:
+			continue
+		if sim_head in remove_otu_list:
+			continue
+		elif sim_head not in remove_otu_list:
+			OTU_dict[head] = columns[head]
+		else:
+			print "shared file is not sane."
+	#print OTU_dict
+	#sys.exit(2)
+	
+	numotus = str(len(OTU_dict.keys()))
+	new_shared_string = ''
+	new_shared_string = list_to_string(['label', 'Group', 'numOtus', ] + OTU_dict.keys())
+	new_shared_string += '\n'
+	
+	for i in range(len(columns['label'])):
+		
+		new_shared_string += columns['label'][i]
+		new_shared_string += '\t'
+		new_shared_string += columns['Group'][i]
+		new_shared_string += '\t'
+		new_shared_string += numotus
+		new_shared_string += '\t'
+		for each_otu in OTU_dict.keys():
+			new_shared_string += str(OTU_dict[each_otu][i])
+			new_shared_string += '\t'
+		new_shared_string += '\n'
+	write_string_down(new_shared_string, new_shared_file)
+	copy_file(design_file, new_design_file)
+	return True
+
+
+def sample_matrix_maker(shared_file, sample_matrix_file):
+	source = open(shared_file, 'rU')
+	rdr = csv.reader(source, delimiter='\t')
+	result = open(sample_matrix_file, 'w')
+	wtr = csv.writer(result, delimiter='\t')
+	for line in rdr:
+		Sample_name = line[1]
+		Sample_data = line[3:]
+		data_to_write = []
+		data_to_write.append(Sample_name)
+		data_to_write.extend(Sample_data)
+		wtr.writerow(data_to_write)
+	return True
+
+
+def biom_matrix_maker(shared_file, biom_matrix_file):
+	source = open(shared_file, 'rU')
+	rdr = csv.reader(source, delimiter='\t')
+	result = open(biom_matrix_file, 'w')
+	wtr = csv.writer(result, delimiter='\t')
+	for line in rdr:
+		Sample_name = line[1]
+		Sample_data = line[3:]
+		data_to_write = []
+		#data_to_write.append(Sample_name)
+		data_to_write.extend(Sample_data)
+		wtr.writerow(data_to_write)
+	return True
+
+
+def transpose_distance_matrix(distance_matrix, transposed_distance_matrix):
+	remove_1st_line_from_file(distance_matrix)
+	f = open(distance_matrix, 'rU')
+	tsv_reader = csv.reader(f, delimiter='\t')
+	all_data = list(tsv_reader)
+	# Transpose it.
+	all_data = list(itertools.izip_longest(*all_data, fillvalue=''))
+	o = open(transposed_distance_matrix, 'w')
+	tsv_writer = csv.writer(o, delimiter='\t')
+	for row in all_data:
+		tsv_writer.writerow(row)
+	return True
+
+
+def remove_1st_line_from_file(file_name):
+	fin = open(file_name, 'rU')
+	data = fin.read().splitlines(True)
+	fout = open(file_name, 'w')
+	fout.writelines(data[1:])
+	fout.close()
+	return True
+
+
+def shared_design_binomial_permutation(shared_file, design_file, mothur_exec_path, processors, outputdir, data_path):
+	design_dictionary_rev = {}
+	design_dictionary_rev = design_dict_maker(design_file, 'reverse')
+	permuted_shared_list = []
+	permuted_design_list = []
+	rev_keys = design_dictionary_rev.keys()
+	design_list = list(itertools.combinations(rev_keys, 2))
+	for design in design_list:
+		design_sample_list = []
+		#first we extract desired samples
+		new_shared_file_name = data_path + 'Shared_file_binomial' + '_'
+		new_design_file_name = data_path + 'Design_file_binomial' + '_'
+		for each_class in design:
+			new_shared_file_name += each_class + '_vs_'
+			new_design_file_name += each_class + '_vs_'
+			sample_list = design_dictionary_rev[each_class]
+			design_sample_list.extend(sample_list)
+		new_shared_file_name = new_shared_file_name[:-4] + '.txt'
+		new_design_file_name = new_design_file_name[:-4] + '.txt'
+		design_sample_string = ''
+		design_sample_string = list_to_string(design_sample_list, '\n')
+		#print all_sample_string
+		#sys.exit(2)
+		design_sample_string_file = outputdir + 'design_sample_string_file.txt'
+		write_string_down(design_sample_string, design_sample_string_file)
+		#sys.exit(2)
+		control_shared, control_design = mothur_update(shared_file, design_file, design_sample_string_file, mothur_exec_path, processors, outputdir)
+		os.rename(control_shared, new_shared_file_name)
+		os.rename(control_design, new_design_file_name)
+		check_it_and_remove_it(design_sample_string_file)
+		permuted_shared_list.append(new_shared_file_name)
+		permuted_design_list.append(new_design_file_name)
+	
+	return (permuted_shared_list, permuted_design_list)
+
+
+def make_default_design(shared_file, prefix, DEFAULT_DESIGN):
+	header_list = []
+	columns_dict = {}
+	sample_list = []
+	header_list, columns_dict = mothur_shared_parser(shared_file)
+	design_string = 'sample\tdesign\n'
+	if 'Groups' in columns_dict:
+		sample_list = columns_dict['Groups']
+	elif 'Group' in columns_dict:
+		sample_list = columns_dict['Group']
+	for i in sample_list:
+		design_string += i + '\t' + prefix + '\n'
+	write_string_down(design_string, DEFAULT_DESIGN)
+	return True
 
 
 def shared_dict(shared_file):
@@ -1266,11 +4510,11 @@ def fix_shared_design_file(shared_file, design_file, absname, new_shared_name, n
 	f.close()
 	write_string_down(new_shared_string, new_shared_name)
 	new_shared_string = ''
-	copy_file(design_file, new_design_file)
+	slugify_file(design_file, new_design_file)
 	return True
 
 
-def create_shared_table(dict_of_entities, abundance_file, taxlevel, name, outputdir):
+def create_shared_table(dict_of_entities, abundance_file, taxlevel, prefix, outputdir):
 	all_entities = dict_of_entities.keys()
 	group_list = ['Groups']
 	group_list.extend(dict_of_entities[dict_of_entities.keys()[0]].get_abundance_keys())
@@ -1297,7 +4541,7 @@ def create_shared_table(dict_of_entities, abundance_file, taxlevel, name, output
 			
 		line_counter += 1
 
-	shared_name = outputdir + name + '_' + taxlevel + '.shared'
+	shared_name = outputdir + prefix + '_' + taxlevel + '.shared'
 	write_string_down(shared_string, shared_name)
 	return shared_name
 
@@ -1543,6 +4787,101 @@ def kill_pid_list(pid_list, outputdir):
 
 # ################################### UTILITIES_FUNCTIONS #################################### #
 
+
+def percentage(part, whole):
+	return 100 * float(part) / float(whole)
+
+
+def slugify_file(file_name, slugged_file, delimiter=None):
+	if delimiter is None:
+		delimiter = '\t'
+	f = open(file_name, 'rU')
+	string = ''
+	for line in f:
+		line = line.rstrip()
+		list_line = line.split(delimiter)
+		for each_element in list_line:
+			string += slugify(each_element) + delimiter
+		string = string[:-1]
+		string += '\n'
+	write_string_down(string, slugged_file)
+	string = ''
+	f.close()
+	return True
+
+
+def remove_value_from_list(the_list, the_value):
+	new_list = []
+	for i in the_list:
+		if i == the_value:
+			continue
+		new_list.append(i)
+	return new_list
+
+
+def remove_line_from_file(the_file, line_number, new_file):
+	string = ''
+	f = open(the_file, 'rU')
+	for idx, i in enumerate(f):
+		if idx < line_number:
+			continue
+		string += i
+	write_string_down(string, new_file)
+	return True
+
+
+def median(lst):
+	sortedLst = sorted(lst)
+	lstLen = len(lst)
+	index = (lstLen - 1) // 2
+
+	if (lstLen % 2):
+		return sortedLst[index]
+	else:
+		return (sortedLst[index] + sortedLst[index + 1]) / 2.0
+
+
+def significant_value(list_float, minimum_value):
+	sig_list = []
+	pw = 0.05
+	if pw > minimum_value:
+		return (True, pw)
+	while pw > minimum_value:
+		for i in list_float:
+			if i < pw:
+				sig_list.append(i)
+		if len(sig_list) > 0:
+			break
+		pw += 0.01
+	if len(sig_list) > 0:
+		return (True, pw)
+	else:
+		return (False, 0.0)
+
+
+def list_stat(this_list):
+	maxl = max(this_list)
+	minl = min(this_list)
+	avel = sum(this_list) / len(this_list)
+	medl = median(this_list)
+	return (maxl, minl, avel, medl)
+
+
+def list_string_to_float(list_string):
+	new_list = []
+	for i in list_string:
+		if i in ['-', ' ', '', None]:
+			continue
+		if isfloat(i) is False:
+			continue
+		else:
+			new_list.append(float(i))
+	if len(new_list) < 1:
+		print "list does not have any digits value"
+		return False
+	return new_list
+
+
 def make_archive(destination, target_file_path):
 
 	shutil.make_archive(destination + '16S_simple_analyser_results', 'zip', target_file_path)
@@ -1682,11 +5021,11 @@ def split_file_name(file):
 	return (path, absname, ext)
 
 
-def write_string_down(new_string, new_name):
-	f = open(new_name, 'w')
+def write_string_down(new_string, file_name):
+	f = open(file_name, 'w')
 	f.write(new_string)
 	f.close()
-	return new_name
+	return True
 
 
 def isFileExist(fname):
@@ -1863,6 +5202,16 @@ def html_plotter(alpha_path, absname, design_file, alpha_diversity_summary_table
 				<div class="panel-body">
 					<div id='div_rarefaction_""" + each_design + """'></div>
 				</div>
+				<div class="panel-footer">
+					<form class="form-inline" role="form">
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_rarefaction_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+						</label>
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_rarefaction_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="linechart_filter('div_rarefaction_""" + each_design + """');"> Click to Delete mode
+						</label>
+					</form>
+				</div>
 			</div>
 		</div>
 		"""
@@ -1882,6 +5231,16 @@ def html_plotter(alpha_path, absname, design_file, alpha_diversity_summary_table
 				<div class="panel-body">
 					<div id='div_sample_abundance_""" + each_design + """'></div>
 				</div>
+				<div class="panel-footer">
+					<form class="form-inline" role="form">
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_sample_abundance_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+						</label>
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_sample_abundance_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="barchart_filter('div_sample_abundance_""" + each_design + """');"> Click to Delete mode
+						</label>
+					</form>
+				</div>
 			</div>
 		</div>
 		"""
@@ -1900,6 +5259,16 @@ def html_plotter(alpha_path, absname, design_file, alpha_diversity_summary_table
 				</div>
 				<div class="panel-body">
 					<div id='div_bacterial_abundance_""" + each_design + """'></div>
+				</div>
+				<div class="panel-footer">
+					<form class="form-inline" role="form">
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_bacterial_abundance_""" + each_design + """_normal_mode" autocomplete="off" checked > Normal mode
+						</label>
+						<label class="form-check-inline" style="font-family:'Avenir';margin-left: 5px;">
+						<input type="radio" name="options" id="div_bacterial_abundance_""" + each_design + """_delete_sample_mode" autocomplete="off" onclick="barchart_filter('div_bacterial_abundance_""" + each_design + """');"> Click to Delete mode
+						</label>
+					</form>
 				</div>
 			</div>
 		</div>
@@ -2040,6 +5409,8 @@ def html_plotter(alpha_path, absname, design_file, alpha_diversity_summary_table
 	""" + sample_abundance_html + """
 	""" + bacterial_abundance_html + """
 	""" + alpha_diversity_summary_html + """
+	
+
 </body>
 <script type="text/javascript">
 	function getSelectedChbox(frm) {
@@ -2171,6 +5542,155 @@ def html_plotter(alpha_path, absname, design_file, alpha_diversity_summary_table
 	""" + sample_abundance_script + """
 	""" + bacterial_abundance_script + """
 	
+</script>
+<script type="text/javascript">
+	//###################################################
+			function linechart_filter(target_div){
+			var myPlot = document.getElementById(target_div);
+			var new_data = [];
+			myPlot.on('plotly_click', function(targetdata){
+			Plotly.deleteTraces(myPlot, targetdata.points[0].curveNumber)
+				});
+
+			};
+	//###################################################
+			function barchart_filter(target_div){
+			var myPlot = document.getElementById(target_div);
+			var new_data = [];
+			myPlot.on('plotly_click', function(targetdata){
+
+			var index_value = '';
+			index_value = targetdata.points[0].x;
+			var index_place = 0;
+			index_place  = targetdata.points[0].fullData.x.indexOf(index_value);
+			//console.log(index_value);
+			//console.log(index_place);
+			//console.log(targetdata);
+			main_data_size = myPlot.data.length;
+			new_data = myPlot.data
+			for (var main_data_index = 0; main_data_index < main_data_size; main_data_index++){
+				new_data[main_data_index].x.splice(index_place, 1);
+				new_data[main_data_index].y.splice(index_place, 1);
+
+			}
+			//console.log(data_sample_abundance_Cancer[0].x)
+			//Plotly.newPlot('myDiv', data, layout);
+			//Plotly.deleteTraces(myPlot, data.points[0].x)
+			//Plotly.newPlot('myDiv', data, layout);
+			Plotly.redraw(target_div, new_data)
+			//Plotly.relayout('myDiv',data)
+		});
+
+		};
+		//##############################################
+		function add_annotate(target_div){
+			var myPlot = document.getElementById(target_div);
+			var new_data = [];
+			myPlot.on('plotly_click', function(target_data){
+				var index_value = '';
+				index_value = target_data.points[0].x;
+				var index_place = 0;
+				index_place  = target_data.points[0].fullData.x.indexOf(index_value);
+			//console.log(index_value);
+			//console.log(index_place);
+			//console.log(targetdata);
+				main_data_size = myPlot.data.length;
+				new_data = myPlot.data;
+				var annotation_string = 'Max:';
+				var abundance_value_dict = {};
+				for (var main_data_index = 0; main_data_index < main_data_size; main_data_index++){
+					abundance_value_dict[myPlot.data[main_data_index].name] = myPlot.data[main_data_index].y[index_place];
+				}
+				sorted_abundance_value_array = sort_dictionary_by_value_descendingly(abundance_value_dict);
+				//console.log(sorted_abundance_value_array);
+				yPosition = 0;
+				for (var i = 0; i < 1; i++){
+
+					annotation_string += sorted_abundance_value_array[i] + '(' + abundance_value_dict[sorted_abundance_value_array[i]] + ')';
+					
+				}
+				console.log(target_data.points[0].fullData.y);
+				yPosition = target_data.points[0].fullData.y.reduce((a, b) => a + b, 0);
+				console.log(yPosition);
+				annotation = {
+					text: annotation_string,
+					x: index_value,
+					y: yPosition,
+					showarrow: true,
+					font: {
+						family: 'Avenir',
+						size: 10,
+						//color: '#ffffff'
+					},
+					align: 'center',
+					arrowhead: 2,
+					arrowsize: 1,
+					arrowwidth: 2,
+					arrowcolor: '#636363',
+					ax: 20,
+					ay: -30,
+					bordercolor: '#c7c7c7',
+					borderwidth: 2,
+					borderpad: 4,
+					//bgcolor: '#ff7f0e',
+					opacity: 0.8
+				}
+				annotations = myPlot.layout.annotations || [];
+				annotations.push(annotation);
+				Plotly.relayout(target_div,{annotations: annotations});
+
+			});
+		};
+		//##############################################
+		function add_comment(target_div, target_comment){
+			var myPlot = document.getElementById(target_div);
+			var myComment = document.getElementById(target_comment).value;
+			console.log(myComment);
+			var new_data = [];
+			myPlot.on('plotly_click', function(target_data){
+				var index_value = '';
+				index_value = target_data.points[0].x;
+				var index_place = 0;
+				index_place  = target_data.points[0].fullData.x.indexOf(index_value);
+				annotation = {
+					text: myComment,
+					x: index_value,
+					//y: yPosition,
+					showarrow: true,
+					font: {
+						family: 'Avenir',
+						size: 10,
+						//color: '#ffffff'
+					},
+					align: 'center',
+					arrowhead: 2,
+					arrowsize: 1,
+					arrowwidth: 2,
+					arrowcolor: '#636363',
+					ax: 20,
+					ay: -30,
+					bordercolor: '#c7c7c7',
+					borderwidth: 2,
+					borderpad: 4,
+					//bgcolor: '#ff7f0e',
+					opacity: 0.8
+				}
+				annotations = myPlot.layout.annotations || [];
+				annotations.push(annotation);
+				Plotly.relayout(target_div,{annotations: annotations});
+
+			});
+		};
+		//##############################################
+
+		function sort_dictionary_by_value_descendingly(myDict){
+			var keys = [];
+			for(var key in myDict){
+				keys.push(key);
+			}
+			return keys.sort(function(a,b){return myDict[b] - myDict[a]});
+
+		};
 </script>
 </html>
 """
