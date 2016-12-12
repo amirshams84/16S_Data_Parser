@@ -147,7 +147,7 @@ class entity:
 # ################################### GLOBALS ################################## #
 CHECK_MARK = "OK"
 FAILED_MARK = ":("
-DEFAULT_OUTPUTDIR = "/microbiome_slicer_results/"
+DEFAULT_OUTPUTDIR = "/microbiome_slicer_results_folder/"
 DEFAULT_EXECDIR = "/exec/"
 DEFAULT_JSLIB = "/javascript/"
 DEFAULT_JS = ['jquery-2.2.3.min.js', 'jquery.tablesorter.js', 'plotly-latest.min.js', 'bootstrap.min.css', 'bootstrap.min.js', 'tether.min.js', 'fontawesome.min.js', 'font-awesome.min.css']
@@ -1114,7 +1114,7 @@ def main(argv):
 
 	</html>
 	"""
-	write_string_down(html_file_string, 'microbiome_slicer.html')
+	write_string_down(html_file_string, 'microbiome_slicer_result.html')
 	sys.exit(2)
 	# ##############################################################################################################################################################
 	# Step10: ALPHA DIVERSITY SUMMARY FILE.
