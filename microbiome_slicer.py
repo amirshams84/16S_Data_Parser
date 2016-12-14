@@ -5988,7 +5988,7 @@ def construct_object(entity, entity_list):
 
 
 def parse_abundance_file(abundance_file):
-	delimiter = sniff(abundance_file)
+	delimiter = sniff_delimiter(abundance_file)
 	file_handle = open(abundance_file, 'rU')
 	data_list = []
 	header_list = []
