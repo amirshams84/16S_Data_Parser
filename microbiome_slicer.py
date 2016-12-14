@@ -1,4 +1,4 @@
-# microbiome_slicer
+
 # ################################### IMPORTS ################################## #
 import sys
 import argparse
@@ -180,6 +180,7 @@ def main(argv):
 	main_file.add_argument("--jslib", help="javascript library", action='store')
 	main_file.add_argument("--outputdir", help="output directory", action='store')
 	main_file.add_argument("--execdir", help="executables_directory", action='store')
+	main_file.add_argument("--outputname", help="executables_directory", action='store')
 
 	# #################### GENERAL PARAMETERS
 	general = parser.add_argument_group('general parameters')
@@ -507,6 +508,8 @@ def main(argv):
 	args.keep_sample_file = keep_sample_file
 	#args.taxlevel = taxlevel
 	args.normalize = normalize
+
+	#shared_file_evaluator(args.shared)
 	# ##############################################################################################################################################################
 	# ##############################################################################################################################################################
 	# ##############################################################################################################################################################
@@ -1115,7 +1118,7 @@ def main(argv):
 	</html>
 	"""
 	write_string_down(html_file_string, 'microbiome_slicer_result.html')
-	sys.exit(2)
+	'''
 	# ##############################################################################################################################################################
 	# Step10: ALPHA DIVERSITY SUMMARY FILE.
 	alpha_diversity_summary_file = args.outputdir + args.prefix + '_ALPHA_DIVERSITY_SUMMARY_file_STEP10.txt'
@@ -1132,6 +1135,7 @@ def main(argv):
 	print "16S SIMPLE ANALYSER EXECUTION COMPLETED AT ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report("16S SIMPLE ANALYSER EXECUTION COMPLETED AT " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	#all_plotter(alpha_path, rarefaction_file_name, sample_abundance_file_name, bacterial_abundance_file_name, summary_table_header, summary_table_body, alpha_diversity_summary_file_name, biomarker_discovery_string, pca_html_string_dict, args.name, args.design)
+	'''
 # ################################### PLOTLY NATURAL ABUNDANCE BARPLOT ##################### #
 
 
@@ -6218,6 +6222,38 @@ def kill_pid_list(pid_list, outputdir):
 	return True
 
 
+# ################################### EVALUATIONS_FUNCTIONS #################################### #
+
+
+def shared_file_evaluator(shared_file_PATH):
+	# Checking the sanity of shared_file
+	shared_file_DELIMITER_list = [',', '\t']
+	shared_file_DELIMITER = sniff_delimiter(shared_file_PATH, shared_file_DELIMITER_list)
+	if shared_file_DELIMITER not in ['\t']:
+		print "Shared file delimiter: ", shared_file_DELIMITER, " is not standard, I update it to tab"
+	shared_file_HANDLE = open(shared_file_PATH, 'rU')
+	shared_file_HEADER_list = []
+	shared_file_HEADER_list = shared_file_HANDLE.readline().rstrip().split(shared_file_DELIMITER)
+	shared_file_RAW_CONTENTS_dict = {}
+	shared_file_RAW_CONTENTS_dict = csv.DictReader(shared_file_HANDLE, shared_file_HEADER_list, delimiter=shared_file_DELIMITER)
+	print shared_file_RAW_CONTENTS_dict
+	sys.exit(2)
+	shared_file_PROCESSED_CONTENTS_dict = {}
+	
+	for each_element in shared_file_RAW_CONTENTS_dict:
+		for key, value in each_element.items():
+			if key == value:
+				continue
+			elif key in shared_file_HEADER_list:
+				shared_file_HEADER_list[key].append(value)
+			else:
+				shared_file_HEADER_list[key] = [value]
+	return True
+
+
+
+
+
 # ################################### UTILITIES_FUNCTIONS #################################### #
 
 
@@ -6424,12 +6460,14 @@ def transpose(one_list):
 	return trans_data
 
 
-def sniff(template_file):
-	template = open(template_file, 'rU')
+def sniff_delimiter(template_file_PATH, delimiter_list=None):
+	if delimiter_list is None:
+		delimiter_list = ['\t']
+	template = open(template_file_PATH, 'rU')
 	try:
-		dialect = csv.Sniffer().sniff(template.readline(), [',', '\t'])
+		dialect = csv.Sniffer().sniff(template.readline(), delimiter_list)
 	except csv.Error:
-		print "file with bad delimiter, please use comma or tab as delimiter "
+		print "The assigned delimiter:", delimiter_list, " is not correct for this file: ", template_file_PATH
 		template.close()
 		sys.exit(2)
 	template.close()
