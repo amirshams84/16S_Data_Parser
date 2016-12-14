@@ -5791,7 +5791,7 @@ def make_default_design(shared_file, prefix, DEFAULT_DESIGN):
 def shared_dict(shared_file):
 	header_dict = {}
 	dict_of_shared = {}
-	delimiter = sniff(shared_file)
+	delimiter = sniff_delimiter(shared_file)
 	f = open(shared_file, 'rU')
 	for line in f:
 		line = line.rstrip()
