@@ -25,6 +25,7 @@ import plotly.graph_objs as PLOTLY_GO
 from plotly.tools import FigureFactory as FF
 import numpy
 from scipy.spatial.distance import pdist, squareform
+import zipfile
 #import operator
 #import colorlover as cl
 
@@ -1102,7 +1103,6 @@ def main(argv):
 	#html_file_string += plotly_normalized_bacterial_abundance_distributions_boxplot_javascript_string
 	#html_file_string += plotly_normalized_bacterial_abundance_scatterplot_javascript_string
 	
-	
 	'''
 	html_file_string += abundance_heatmap_javascript_string
 	html_file_string += sample_abundance_javascript_string
@@ -1117,7 +1117,10 @@ def main(argv):
 
 	</html>
 	"""
+	flag = remove_extension_files(CURRENT_PATH, '.logfile')
 	write_string_down(html_file_string, 'microbiome_slicer_result.html')
+	zip_file_NAME = 'microbiome_slicer_result.zip'
+	zip_it('microbiome_slicer_result.html', zip_file_NAME)
 	'''
 	# ##############################################################################################################################################################
 	# Step10: ALPHA DIVERSITY SUMMARY FILE.
@@ -5367,6 +5370,12 @@ def mothur_relative_abundance(processors, outputdir, stderr, stdout, run_pid, mo
 
 # ################################### SPECIFIC_FUNCTIONS ################################## #
 
+def zip_it(target_file_NAME, zip_file_NAME):
+	zip_file_HANDLE = zipfile.ZipFile(zip_file_NAME, 'w')
+	zip_file_HANDLE.write(target_file_NAME)
+	zip_file_HANDLE.close()
+	return True
+
 def get_core_microbiome(shared_file, mothur_exec_path, processors, outputdir):
 	shared_dict = {}
 	shared_dict = parse_shared_file(shared_file)
@@ -6373,7 +6382,7 @@ def list_string_to_float(list_string):
 
 def make_archive(destination, target_file_path):
 
-	shutil.make_archive(destination + '16S_simple_analyser_results', 'zip', target_file_path)
+	shutil.make_archive(destination + 'microbiome_slicer_result.html', 'zip', target_file_path)
 	return True
 
 
