@@ -33,9 +33,9 @@ import plotly.graph_objs as PLOTLY_GO
 
 CHECK_MARK = "OK"
 FAILED_MARK = ":("
-DEFAULT_OUTPUTDIR = "/MICROBIOME_SLICER_OUTPUTDIR/"
-DEFAULT_TESTDATA = "/MICROBIOME_SLICER_TESTDATA/"
-DEFAULT_EXECDIR = "/MICROBIOME_SLICER_EXECDIR/"
+DEFAULT_OUTPUTDIR = "/BIOME_SLICER_OUTPUTDIR/"
+DEFAULT_TESTDATA = "/BIOME_SLICER_TESTDIR/"
+DEFAULT_EXECDIR = "/BIOME_SLICER_EXECDIR/"
 DEFAULT_PROCESSORS = str(multiprocessing.cpu_count())
 DEFAULT_PREFIX = "BIOME_SLICER"
 NO_BETA = True
@@ -524,19 +524,19 @@ def html_visualizer(final_string, html_string=None, javascript_string=None):
 								</head>
 								<body>
 								<div class="container-fluid">
-								<h2>Microbiome Slicer results</h2>
+								<h2>Biome Slicer results</h2>
 								<div class="row">
 									<dl class="dl-horizontal">
 									<dt>Request Name</dt>
 									<dd>20160216-H1</dd>
 									<dt>Project Title</dt>
-									<dd>Microbiome composition</dd>
+									<dd>Biome composition</dd>
 									<dt>Project Description</dt>
 									<dd>
 									<strong> Brief background: </strong><small>Having bred a strain of double gene-deleted mice that lack the pattern recognition receptors nucleotide-binding and oligomerization domain-containing 2 (NOD2) and toll-like receptor 2 (TLR2), these mice will likely be valuable in experiments demonstrating altered host response to probiotic bacteria and respiratory viruses in the airways.  Dysregulated capacity to sense microbial patterns by these two receptors may contribute to downstream immunomodulation, altered inflammation in the airways.</small><br>
 									<strong>Goal/purpose or rationale: </strong><small>We would like to know if the lack of these two receptors leave mice with an altered composition of commensal microbes at baseline (untouched/naive mice), both in the gut and in the lung. Sequence comparison of microbial 16S rRNA genes within these tissues (knockout vs. WT) offers a powerful analytical tool.</small></dd-->
 									<dt>Experiment</dt>
-									<dd>Gut Microbiome 16S rRNA sequencing</dd>
+									<dd>Gut Biome 16S rRNA sequencing</dd>
 									<dt>PI</dt>
 									<dd>...</dd>
 									</dl>
@@ -1629,7 +1629,7 @@ def biom_to_shared_converter(biom_file_PATH, prefix_NAME, biom_file_TSV_FORMAT_P
 		sample_value_list = map(str, sample_value_list)
 		#print map(str, sample_value_list)
 		#print len(sample_value_list)
-		shared_file_string += 'MICROBIOME_SLICER' + '\t' + slugify(each_Sample) + '\t' + numOtus_value + '\t' + list_to_string(sample_value_list, '\t') + '\n'
+		shared_file_string += 'Biome_SLICER' + '\t' + slugify(each_Sample) + '\t' + numOtus_value + '\t' + list_to_string(sample_value_list, '\t') + '\n'
 		
 	#shared_file_string = shared_file_string[:-1]
 	write_string_down(shared_file_string, biom_file_SHARED_FORMAT_PATH)
