@@ -2968,7 +2968,7 @@ def main(argv):
 	# ++++++++++++++++++++++++++++++ PARSE INPUT ARGUMENTS
 	parser = argparse.ArgumentParser()
 	main_file = parser.add_argument_group('Main file parameters')
-	main_file.add_argument("--BIOM", help="Universal microBIOM abundance matrix file(http://BIOM-format.org)", action='store')
+	main_file.add_argument("--biom", help="Universal microBIOM abundance matrix file(http://BIOM-format.org)", action='store')
 	main_file.add_argument("--design", help="Design file: Tab delimited file to assign samples to a specific treatments, or other categories.", action='store')
 	args = parser.parse_args()
 	# ------------------------------ END OF PARSE INPUT ARGUMENTS
@@ -3101,29 +3101,31 @@ def main(argv):
 	report("###################################################################\n")
 	
 	# ++++++++++++++++++++++++++++++ CHECKING BIOM FILE
-	if args.BIOM is not None:
-		if isFileExist(args.BIOM) is False:
-			error("[--BIOM]: BIOM file has Access/Exist issue")
-			print "[--BIOM]: BIOM file has Access/Exist issue"
-			print "ABORTING!!!"
-			error("ABORTING!!!")
-			sys.exit(2)
-		report("BIOM_to_shared_converter: ")
-		print "BIOM_to_shared_converter: "
-		print "Execution started at ", time.strftime("%Y-%m-%d %H:%M:%S")
-		report("Execution started at " + time.strftime("%Y-%m-%d %H:%M:%S"))
-		BIOM_file_TSV_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_TSV_FORMAT_STEP1.txt'
-		BIOM_file_SHARED_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_SHARED_FORMAT_STEP1.txt'
-		flag = BIOM_to_shared_converter(args.BIOM, args.prefix, BIOM_file_TSV_FORMAT_PATH, BIOM_file_SHARED_FORMAT_PATH, args.processors, args.outputdir)
-		if flag is False:
-			print "ABORTING!!!"
-			error("ABORTING!!!")
-		else:
-			print "Execution completed at ", time.strftime("%Y-%m-%d %H:%M:%S")
-			report("Execution completed at " + time.strftime("%Y-%m-%d %H:%M:%S"))
-			report("BIOM_to_shared_converter executed successfully!!!")
-			print "BIOM_to_shared_converter executed successfully!!!"
-			args.shared = BIOM_file_SHARED_FORMAT_PATH
+	if args.biom is None:
+		args.biom = "/BIOM_SLICER_TESTDIR/ZAC_biom.txt"
+	if isFileExist(args.BIOM) is False:
+		error("[--BIOM]: BIOM file has Access/Exist issue")
+		print "[--BIOM]: BIOM file has Access/Exist issue"
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+		sys.exit(2)
+	report("BIOM_to_shared_converter: ")
+	print "BIOM_to_shared_converter: "
+	print "Execution started at ", time.strftime("%Y-%m-%d %H:%M:%S")
+	report("Execution started at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+	BIOM_file_TSV_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_TSV_FORMAT_STEP1.txt'
+	BIOM_file_SHARED_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_SHARED_FORMAT_STEP1.txt'
+	flag = BIOM_to_shared_converter(args.BIOM, args.prefix, BIOM_file_TSV_FORMAT_PATH, BIOM_file_SHARED_FORMAT_PATH, args.processors, args.outputdir)
+	if flag is False:
+		print "ABORTING!!!"
+		error("ABORTING!!!")
+	else:
+		print "Execution completed at ", time.strftime("%Y-%m-%d %H:%M:%S")
+		report("Execution completed at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+		report("BIOM_to_shared_converter executed successfully!!!")
+		print "BIOM_to_shared_converter executed successfully!!!"
+		args.shared = BIOM_file_SHARED_FORMAT_PATH
+
 	# ------------------------------ END OF CHECKING BIOM FILE
 
 	# ++++++++++++++++++++++++++++++ CHECKING DESIGN FILE
