@@ -1,5 +1,5 @@
 # ################################### INFO ##################################### #
-# MicroBIOMe Slicer 1.0
+# Microbiome Slicer 1.0
 # BY: Amir Shams
 # Email: amir.shams84@gmail.com
 # ################################### IMPORTED LIBRARY ######################### #
@@ -34,7 +34,7 @@ import plotly.graph_objs as PLOTLY_GO
 CHECK_MARK = "OK"
 FAILED_MARK = ":("
 DEFAULT_OUTPUTDIR = "/BIOM_SLICER_OUTPUTDIR/"
-DEFAULT_TESTDATA = "/BIOM_SLICER_TESTDIR/"
+DEFAULT_TESTDIR = "/BIOM_SLICER_TESTDIR/"
 DEFAULT_EXECDIR = "/BIOM_SLICER_EXECDIR/"
 DEFAULT_PROCESSORS = str(multiprocessing.cpu_count())
 DEFAULT_PREFIX = "BIOM_SLICER"
@@ -518,25 +518,25 @@ def html_visualizer(final_string, html_string=None, javascript_string=None):
 										#sample_abundance {padding-top:50px;}
 										#bacterial_abundance {padding-top:50px;}
 										#pcoa {padding-top:50px;}
-										#BIOMarker_discovery {padding-top:50px;}
+										#biomarker_discovery {padding-top:50px;}
 									</style>
 									<!--############################-->
 								</head>
 								<body>
 								<div class="container-fluid">
-								<h2>BIOM Slicer results</h2>
+								<h2>biom Slicer results</h2>
 								<div class="row">
 									<dl class="dl-horizontal">
 									<dt>Request Name</dt>
 									<dd>20160216-H1</dd>
 									<dt>Project Title</dt>
-									<dd>BIOM composition</dd>
+									<dd>biom composition</dd>
 									<dt>Project Description</dt>
 									<dd>
 									<strong> Brief background: </strong><small>Having bred a strain of double gene-deleted mice that lack the pattern recognition receptors nucleotide-binding and oligomerization domain-containing 2 (NOD2) and toll-like receptor 2 (TLR2), these mice will likely be valuable in experiments demonstrating altered host response to probiotic bacteria and respiratory viruses in the airways.  Dysregulated capacity to sense microbial patterns by these two receptors may contribute to downstream immunomodulation, altered inflammation in the airways.</small><br>
 									<strong>Goal/purpose or rationale: </strong><small>We would like to know if the lack of these two receptors leave mice with an altered composition of commensal microbes at baseline (untouched/naive mice), both in the gut and in the lung. Sequence comparison of microbial 16S rRNA genes within these tissues (knockout vs. WT) offers a powerful analytical tool.</small></dd-->
 									<dt>Experiment</dt>
-									<dd>Gut BIOM 16S rRNA sequencing</dd>
+									<dd>Gut biom 16S rRNA sequencing</dd>
 									<dt>PI</dt>
 									<dd>...</dd>
 									</dl>
@@ -1029,14 +1029,14 @@ def brief_statistics_table_function(shared_file_PATH, design_file_PATH):
 	columns_dict = {}
 	headers_list, columns_dict = mothur_shared_parser(shared_file_PATH)
 	design_dictionary = design_dict_maker(design_file_PATH)
-	BIOM_matrix_header_list = ['Groups', 'Sample Name', 'Total number', 'Classified number', 'Unclassified number', 'Classified percentage', 'Unclassified percentage']
+	biom_matrix_header_list = ['Groups', 'Sample Name', 'Total number', 'Classified number', 'Unclassified number', 'Classified percentage', 'Unclassified percentage']
 	no_unclassified_flag = True
 	if 'unclassified' in headers_list:
 		no_unclassified_flag = False
 	else:
 		no_unclassified_flag = True
 	thead_string = '								<thead>\n								<tr>\n'
-	for thead in BIOM_matrix_header_list:
+	for thead in biom_matrix_header_list:
 		thead_string += '									<th class="text-center">' + thead + '</th>\n'
 	thead_string += '								</tr>\n								</thead>\n'
 	tbody_string = '								<tbody>\n'
@@ -1047,9 +1047,9 @@ def brief_statistics_table_function(shared_file_PATH, design_file_PATH):
 			continue
 		else:
 			bacterial_list.append(each_head)
-	BIOM_matrix_length = len(columns_dict['numOtus'])
+	biom_matrix_length = len(columns_dict['numOtus'])
 
-	for each_row in range(BIOM_matrix_length):
+	for each_row in range(biom_matrix_length):
 		each_row_list = []
 		for each_bacteria in bacterial_list:
 			each_row_list.append(columns_dict[each_bacteria][each_row])
@@ -1147,6 +1147,12 @@ def plotly_Bacterial_relative_abundance_Barplot(shared_file, design_file):
 		yaxis=dict(
 			title='Normalized abundance',
 			titlefont=dict(family='Avenir', size=12),
+		),
+		margin=dict(
+			l=100,
+			r=100,
+			b=100,
+			t=100,
 		)
 	)
 
@@ -1519,6 +1525,75 @@ def plotly_Principal_Coordinate_Analysis(shared_file, design_file, mothur_exec_p
 	plotly_html_string, plotly_script = plotly_html_maker('PCOA_VARIANCE', 'SCREE_BARPLOT', PCOA_VARIANCE_barplot_FIGURE_objects_dict, mode_bar=False)
 
 	return (plotly_html_string, plotly_script)
+
+
+def plotly_Dominant_Entities_Distribution_Boxplot(shared_file, design_file):
+	# ######################## PARSING DATA
+	headers_list = []
+	columns_dict = {}
+	headers_list, columns_dict = mothur_shared_parser(shared_file)
+
+	reverse_design_dict = {}
+	reverse_design_dict = design_dict_maker(design_file, 'reverse')
+
+	OTU_name_list = []
+	for each_head in headers_list:
+		if each_head.lower() in ['label', 'groups', 'numotus']:
+			continue
+		else:
+			OTU_name_list.append(each_head)
+	# ######################## PLOTLY DATA CREATE
+	Dominant_Entities_Distribution_boxplot_TRACE_objects_dict = {}
+	Dominant_Entities_Distribution_boxplot_LAYOUT_objects_dict = {}
+	Dominant_Entities_Distribution_boxplot_FIGURE_objects_dict = {}
+	for each_OTU in OTU_name_list:
+		Dominant_Entities_Distribution_boxplot_TRACE_objects_dict[each_OTU] = {}
+		Dominant_Entities_Distribution_boxplot_LAYOUT_objects_dict[each_OTU] = {}
+		for each_design in reverse_design_dict:
+			sample_list = reverse_design_dict[each_design]
+			OTU_value_list = []
+			for each_sample in sample_list:
+				each_sample_index = columns_dict['Groups'].index(each_sample)
+				OTU_value_list.append(columns_dict[each_OTU][each_sample_index])
+			Dominant_Entities_Distribution_boxplot_TRACE_objects_dict[each_OTU][each_design] = PLOTLY_GO.Box(
+				x=each_design,
+				y=OTU_value_list,
+				name=each_design,
+				hoverinfo='y+name',
+				boxmean=True,
+				#orientation='h',
+			)
+		Dominant_Entities_Distribution_boxplot_LAYOUT_objects_dict[each_OTU] = PLOTLY_GO.Layout(
+			boxmode='group',
+			height=400,
+			autosize=True,
+			showlegend=False,
+			title=each_OTU,
+			hovermode='closest',
+			titlefont=dict(
+				family='Avenir',
+				size=12
+			),
+			font=dict(family='Avenir', size=10),
+			yaxis=dict(
+				showgrid=True,
+				#title=each_OTU + ' Index Value',
+				titlefont=dict(
+					family='Avenir',
+					size=10,
+				)
+			),
+			margin=dict(
+				l=40,
+				r=30,
+				b=80,
+				t=100,
+			),
+		)
+		Dominant_Entities_Distribution_boxplot_FIGURE_objects_dict[each_OTU] = PLOTLY_GO.Figure(data=Dominant_Entities_Distribution_boxplot_TRACE_objects_dict[each_OTU].values(), layout=Dominant_Entities_Distribution_boxplot_LAYOUT_objects_dict[each_OTU])
+	# ###################################  PLOTLY PLOT CREATE ###############################
+	plotly_html_string, plotly_script = plotly_html_maker('Dominant_Entities_Distribution', 'BOX_PLOT', Dominant_Entities_Distribution_boxplot_FIGURE_objects_dict, mode_bar=False)
+	return (plotly_html_string, plotly_script)
 # ################################### VALIDATOR ############################## #
 
 
@@ -1554,17 +1629,17 @@ def design_file_validator(design_file_PATH, design_file_VALIDATED_PATH):
 # ################################### CONVERTER ############################## #
 
 
-def BIOM_to_tsv_converter(processors, outputdir, stderr, stdout, run_pid, BIOM_exec_path, BIOM_file_PATH, tsv_file_PATH):
+def biom_to_tsv_converter(processors, outputdir, stderr, stdout, run_pid, biom_exec_path, biom_file_PATH, tsv_file_PATH):
 	
 	space = ' '
-	BIOM_string = ''
-	BIOM_string += 'nohup' + space
-	BIOM_string += BIOM_exec_path + space
-	BIOM_string += 'convert -i' + space + BIOM_file_PATH + space + '-o' + space + tsv_file_PATH + space + '--to-tsv --header-key taxonomy --table-type="OTU table"'
-	print "EXECUTING: ", BIOM_string
-	report("EXECUTING: " + BIOM_string)
+	biom_string = ''
+	biom_string += 'nohup' + space
+	biom_string += biom_exec_path + space
+	biom_string += 'convert -i' + space + biom_file_PATH + space + '-o' + space + tsv_file_PATH + space + '--to-tsv --header-key taxonomy --table-type="OTU table"'
+	print "EXECUTING: ", biom_string
+	report("EXECUTING: " + biom_string)
 	exec_dict = {}
-	exec_dict = execute([BIOM_string])
+	exec_dict = execute([biom_string])
 	if exec_dict["exitCode"] != 0:
 		print "[FATAL-ERROR]: Commandline can not be executed!!!"
 		print "ABORTING!!!"
@@ -1573,32 +1648,32 @@ def BIOM_to_tsv_converter(processors, outputdir, stderr, stdout, run_pid, BIOM_e
 		return True
 
 
-def BIOM_to_shared_converter(BIOM_file_PATH, prefix_NAME, BIOM_file_TSV_FORMAT_PATH, BIOM_file_SHARED_FORMAT_PATH, processors, outputdir):
-	#STEP1:Convert BIOM to TSV
-	print "BIOM_to_tsv_converter:"
-	BIOM_exec_path = 'BIOM'
-	flag, stderr = execute_functions(BIOM_to_tsv_converter, processors, outputdir, 'multi', 'mafft', BIOM_exec_path, BIOM_file_PATH, BIOM_file_TSV_FORMAT_PATH)
+def biom_to_shared_converter(biom_file_PATH, prefix_NAME, biom_file_TSV_FORMAT_PATH, biom_file_SHARED_FORMAT_PATH, processors, outputdir):
+	#STEP1:Convert biom to TSV
+	print "biom_to_tsv_converter:"
+	biom_exec_path = 'biom'
+	flag, stderr = execute_functions(biom_to_tsv_converter, processors, outputdir, 'multi', 'mafft', biom_exec_path, biom_file_PATH, biom_file_TSV_FORMAT_PATH)
 	if flag is False:
-		print "Execution of BIOM_to_tsv_converter failed!!!"
-		error("Execution of BIOM_to_tsv_converter failed!!!")
+		print "Execution of biom_to_tsv_converter failed!!!"
+		error("Execution of biom_to_tsv_converter failed!!!")
 		print "ABORTING!!!"
 		error("ABORTING!!!")
 		sys.exit(2)
 	else:
-		report("BIOM_to_tsv_converter executed successfully!!!")
-		print "BIOM_to_tsv_converter executed successfully!!!"
+		report("biom_to_tsv_converter executed successfully!!!")
+		print "biom_to_tsv_converter executed successfully!!!"
 		
 	#STEP2: LOADING TABLE INTO PANDAS DATAFRAME
-	BIOM_pandas_DATAFRAME = pandas.read_table(BIOM_file_TSV_FORMAT_PATH, index_col=0, skiprows=1, low_memory=False, encoding='utf-8')
+	biom_pandas_DATAFRAME = pandas.read_table(biom_file_TSV_FORMAT_PATH, index_col=0, skiprows=1, low_memory=False, encoding='utf-8')
 	
 	OTU_name_list = []
-	OTU_name_list = BIOM_pandas_DATAFRAME.index.values.tolist()
+	OTU_name_list = biom_pandas_DATAFRAME.index.values.tolist()
 	
 	Sample_name_list = []
-	Sample_name_list = BIOM_pandas_DATAFRAME.columns[:-1].values.tolist()
+	Sample_name_list = biom_pandas_DATAFRAME.columns[:-1].values.tolist()
 
 	Taxonomy_name_list = []
-	Taxonomy_name_list = BIOM_pandas_DATAFRAME.taxonomy.values.tolist()
+	Taxonomy_name_list = biom_pandas_DATAFRAME.taxonomy.values.tolist()
 	
 	#Merging OTU and TAX
 	OTU_TAX_name_list = []
@@ -1622,16 +1697,16 @@ def BIOM_to_shared_converter(BIOM_file_PATH, prefix_NAME, BIOM_file_TSV_FORMAT_P
 	
 	for each_Sample in Sample_name_list:
 		sample_value_list = []
-		sample_value_list = BIOM_pandas_DATAFRAME[each_Sample].values.tolist()
+		sample_value_list = biom_pandas_DATAFRAME[each_Sample].values.tolist()
 
 		sample_value_list = map(int, sample_value_list)
 		sample_value_list = map(str, sample_value_list)
 		#print map(str, sample_value_list)
 		#print len(sample_value_list)
-		shared_file_string += 'BIOM_SLICER' + '\t' + slugify(each_Sample) + '\t' + numOtus_value + '\t' + list_to_string(sample_value_list, '\t') + '\n'
+		shared_file_string += 'biom_SLICER' + '\t' + slugify(each_Sample) + '\t' + numOtus_value + '\t' + list_to_string(sample_value_list, '\t') + '\n'
 		
 	#shared_file_string = shared_file_string[:-1]
-	write_string_down(shared_file_string, BIOM_file_SHARED_FORMAT_PATH)
+	write_string_down(shared_file_string, biom_file_SHARED_FORMAT_PATH)
 	return True
 
 
@@ -2376,7 +2451,7 @@ def remove_OTU_shared_design(shared_file, design_file, otu_control_file, new_sha
 	return True
 
 
-def BIOMarker_discovery(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
+def biomarker_discovery(shared_file, design_file, name, mothur_exec_path, processors, outputdir):
 	significant_OTUs_dict = {}
 	significant_OTUs_list = []
 	#kruskal_name = 'kruskal_wallis_' + temp_name
@@ -2968,7 +3043,7 @@ def main(argv):
 	# ++++++++++++++++++++++++++++++ PARSE INPUT ARGUMENTS
 	parser = argparse.ArgumentParser()
 	main_file = parser.add_argument_group('Main file parameters')
-	main_file.add_argument("--biom", help="Universal microBIOM abundance matrix file(http://BIOM-format.org)", action='store')
+	main_file.add_argument("--biom", help="Universal microbiom abundance matrix file(http://biom-format.org)", action='store')
 	main_file.add_argument("--design", help="Design file: Tab delimited file to assign samples to a specific treatments, or other categories.", action='store')
 	args = parser.parse_args()
 	# ------------------------------ END OF PARSE INPUT ARGUMENTS
@@ -2976,8 +3051,8 @@ def main(argv):
 	# ++++++++++++++++++++++++++++++ BEURACRATICS PROCEDURES
 	report_string += "######################################################################################################################################\n"
 	print "######################################################################################################################################"
-	report_string += "BIOM SLICER 1.0 EXECUTION HAS INITIATED" + '\n'
-	print "BIOM SLICER 1.0 EXECUTION HAS INITIATED"
+	report_string += "biom SLICER 1.0 EXECUTION HAS INITIATED" + '\n'
+	print "biom SLICER 1.0 EXECUTION HAS INITIATED"
 	report_string += "Initiation time: " + time.strftime("%Y-%m-%d %H:%M:%S") + '\n'
 	print "Initiation time: ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report_string += "###################################################################" + '\n'
@@ -3005,7 +3080,7 @@ def main(argv):
 	# ++++++++++++++++++++++++++++++ OUTPUT DIRECTORY CHECKING
 	args.outputdir = DEFAULT_OUTPUTDIR
 	global report_file
-	report_file = args.outputdir + "BIOM_slicer_report.txt"
+	report_file = args.outputdir + "biom_slicer_report.txt"
 	check_it_and_remove_it(report_file, True)
 	report(report_string)
 	# ------------------------------ END OF OUTPUT DIRECTORY CHECKING
@@ -3100,33 +3175,33 @@ def main(argv):
 	print "###################################################################\n"
 	report("###################################################################\n")
 	
-	# ++++++++++++++++++++++++++++++ CHECKING BIOM FILE
+	# ++++++++++++++++++++++++++++++ CHECKING biom FILE
 	if args.biom is None:
-		args.biom = "/BIOM_SLICER_TESTDIR/ZAC_biom.txt"
-	if isFileExist(args.BIOM) is False:
-		error("[--BIOM]: BIOM file has Access/Exist issue")
-		print "[--BIOM]: BIOM file has Access/Exist issue"
+		args.biom = DEFAULT_TESTDIR + "ZAC_biom.txt"
+	if isFileExist(args.biom) is False:
+		error("[--biom]: biom file has Access/Exist issue")
+		print "[--biom]: biom file has Access/Exist issue"
 		print "ABORTING!!!"
 		error("ABORTING!!!")
 		sys.exit(2)
-	report("BIOM_to_shared_converter: ")
-	print "BIOM_to_shared_converter: "
+	report("biom_to_shared_converter: ")
+	print "biom_to_shared_converter: "
 	print "Execution started at ", time.strftime("%Y-%m-%d %H:%M:%S")
 	report("Execution started at " + time.strftime("%Y-%m-%d %H:%M:%S"))
-	BIOM_file_TSV_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_TSV_FORMAT_STEP1.txt'
-	BIOM_file_SHARED_FORMAT_PATH = args.outputdir + args.prefix + '_BIOM_file_SHARED_FORMAT_STEP1.txt'
-	flag = BIOM_to_shared_converter(args.BIOM, args.prefix, BIOM_file_TSV_FORMAT_PATH, BIOM_file_SHARED_FORMAT_PATH, args.processors, args.outputdir)
+	biom_file_TSV_FORMAT_PATH = args.outputdir + args.prefix + '_biom_file_TSV_FORMAT_STEP1.txt'
+	biom_file_SHARED_FORMAT_PATH = args.outputdir + args.prefix + '_biom_file_SHARED_FORMAT_STEP1.txt'
+	flag = biom_to_shared_converter(args.biom, args.prefix, biom_file_TSV_FORMAT_PATH, biom_file_SHARED_FORMAT_PATH, args.processors, args.outputdir)
 	if flag is False:
 		print "ABORTING!!!"
 		error("ABORTING!!!")
 	else:
 		print "Execution completed at ", time.strftime("%Y-%m-%d %H:%M:%S")
 		report("Execution completed at " + time.strftime("%Y-%m-%d %H:%M:%S"))
-		report("BIOM_to_shared_converter executed successfully!!!")
-		print "BIOM_to_shared_converter executed successfully!!!"
-		args.shared = BIOM_file_SHARED_FORMAT_PATH
+		report("biom_to_shared_converter executed successfully!!!")
+		print "biom_to_shared_converter executed successfully!!!"
+		args.shared = biom_file_SHARED_FORMAT_PATH
 
-	# ------------------------------ END OF CHECKING BIOM FILE
+	# ------------------------------ END OF CHECKING biom FILE
 
 	# ++++++++++++++++++++++++++++++ CHECKING DESIGN FILE
 	print "Design file checking and validation:"
@@ -3135,7 +3210,7 @@ def main(argv):
 	report("Execution started at " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	if args.design is None:
 		# DESIGN FILE MAKING
-		DEFAULT_DESIGN = args.outputdir + 'BIOM_slicer_default_design.txt'
+		DEFAULT_DESIGN = args.outputdir + 'biom_slicer_default_design.txt'
 		flag = make_default_design(args.shared, args.prefix, DEFAULT_DESIGN)
 		if flag is False:
 			error("[--design]: Something is wrong during design file making")
@@ -3316,11 +3391,11 @@ def main(argv):
 	print "OTU ABUNDANCE EVALUATION STEP PASSED!!"
 	# ----------------------------- END OF REMOVING LOW ABUNDANCE OTUS FUNCTION
 
-	# +++++++++++++++++++++++++++++ BIOMARKER DISCOVERY FUNCTION
+	# +++++++++++++++++++++++++++++ biomARKER DISCOVERY FUNCTION
 	if NO_BETA is False:
-		ranked_shared = BIOMarker_discovery(args.shared, args.design, args.prefix, mothur_exec_PATH, args.processors, args.outputdir)
+		ranked_shared = biomarker_discovery(args.shared, args.design, args.prefix, mothur_exec_PATH, args.processors, args.outputdir)
 		args.shared = ranked_shared
-	# ----------------------------- END OF BIOMARKER DISCOVERY FUNCTION
+	# ----------------------------- END OF biomARKER DISCOVERY FUNCTION
 
 	# +++++++++++++++++++++++++++++ RELATIVE ABUNDANCE CALCULATION FUNCTION
 	relative_shared_file = args.outputdir + args.prefix + '_RELATIVE_shared_file_STEP7.txt'
@@ -3373,15 +3448,30 @@ def main(argv):
 		print "Execution completed at ", time.strftime("%Y-%m-%d %H:%M:%S")
 		report("Execution completed at " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	# ----------------------------- END OF PCOA FUNCTION
+
+	# +++++++++++++++++++++++++++++ DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION
+	print "DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION is in progress"
+	report("DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION is in progress")
+	print "Execution started at ", time.strftime("%Y-%m-%d %H:%M:%S")
+	report("Execution started at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+	plotly_Dominant_Entities_Distribution_Boxplot_html_string = ''
+	plotly_Dominant_Entities_Distribution_Boxplot_javascript_string = ''
+	plotly_Dominant_Entities_Distribution_Boxplot_html_string, plotly_Dominant_Entities_Distribution_Boxplot_javascript_string = plotly_Dominant_Entities_Distribution_Boxplot(relative_shared_file, relative_design_file)
+	FINAL_STRING = html_visualizer(FINAL_STRING, plotly_Dominant_Entities_Distribution_Boxplot_html_string, plotly_Dominant_Entities_Distribution_Boxplot_javascript_string)
+	print "DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION PASSED!!!"
+	report("DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION PASSED!!!")
+	print "Execution completed at ", time.strftime("%Y-%m-%d %H:%M:%S")
+	report("Execution completed at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+	# ----------------------------- END OF DOMINANT ENTITIES DISTRIBUTION BOX PLOT FUNCTION
 	
 	# +++++++++++++++++++++++++++++ FINALIZING
 	FINAL_STRING = html_visualizer(FINAL_STRING)
 	flag = remove_extension_files(CURRENT_PATH, '.logfile')
-	write_string_down(FINAL_STRING, 'BIOM_slicer_result.html')
-	zip_file_NAME = 'BIOM_slicer_result.zip'
-	zip_it('BIOM_slicer_result.html', zip_file_NAME)
-	print "BIOM SLICER EXECUTION COMPLETED."
-	report("BIOM SLICER EXECUTION COMPLETED.")
+	write_string_down(FINAL_STRING, 'biom_slicer_result.html')
+	zip_file_NAME = 'biom_slicer_result.zip'
+	zip_it('biom_slicer_result.html', zip_file_NAME)
+	print "biom SLICER EXECUTION COMPLETED."
+	report("biom SLICER EXECUTION COMPLETED.")
 	report("Completion time: " + time.strftime("%Y-%m-%d %H:%M:%S"))
 	print "Completion time: ", time.strftime("%Y-%m-%d %H:%M:%S")
 	# ----------------------------- END OF FINALIZING
